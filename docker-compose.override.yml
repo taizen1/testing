@@ -1,0 +1,21 @@
+# Local development overrides
+# This file is automatically picked up by `docker compose up`
+# It switches n8n to HTTP mode and exposes Qdrant for direct access
+
+version: "3.8"
+
+services:
+  n8n:
+    environment:
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - N8N_HOST=localhost
+
+  qdrant:
+    ports:
+      - "6333:6333"
+
+  # Disable Caddy in local dev (not needed without HTTPS)
+  caddy:
+    profiles:
+      - production

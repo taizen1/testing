@@ -42,9 +42,10 @@
               +--------------+ |  +----------------+
               |                |                   |
         +-----v-----+   +-----v------+   +--------v--------+
-        |  ShipBob   |   |   Slack/   |   | OpenAI / Claude |
-        |    API     |   |  Discord   |   |   (LLM for AI   |
-        |            |   |  Webhook   |   |    Agent node)   |
+        |  ShipBob   |   |   Email    |   |    Anthropic    |
+        |    API     |   |   (SMTP)   |   |   Claude API    |
+        |            |   | Alert to:  |   |  (LLM for AI    |
+        |            |   | talaizen.. |   |   Agent node)   |
         +------------+   +------------+   +-----------------+
 ```
 
@@ -58,11 +59,11 @@
 |------|--------------|---------|
 | 1 | **Shopify Trigger** | Fires on `orders/paid` webhook topic |
 | 2 | **IF Node** (High-Ticket Gate) | Check `order.total_price >= threshold` (e.g., $250). Tag order as `high-ticket` in Shopify if true |
-| 3 | **Function Node** (Fraud Check) | Flag if: billing country != shipping country, OR email is disposable domain, OR order note contains suspicious patterns. If flagged -> branch to manual review + Slack alert |
-| 4 | **Function Node** (Address Validation) | Regex validation for US ZIP (^\d{5}(-\d{4})?$), basic field completeness check. Optionally call USPS/Lob API for production |
+| 3 | **Function Node** (Fraud Check) | Flag if: billing country != shipping country, OR email is disposable domain, OR velocity threshold exceeded (3+ orders/24hr from same email or address), OR suspicious order notes. If flagged -> branch to manual review + email alert |
+| 4 | **HTTP Request** (Address Validation via Lob) | Call Lob Address Verification API (`POST /v1/us_verifications`) for CASS-certified USPS validation. Checks deliverability, corrects formatting, flags undeliverable addresses. Fallback: regex + field completeness if Lob is unreachable |
 | 5 | **HTTP Request** (ShipBob Create Order) | POST `/1.0/order` with mapped payload |
 | 6 | **IF Node** (Response Check) | Branch on HTTP status: 2xx -> success, else -> error handler |
-| 7 | **Error Handler** (Slack/Discord) | POST failure details to webhook URL |
+| 7 | **Error Handler** (Email via SMTP) | Send failure details to `talaizenbsc@gmail.com` via n8n Send Email node (SMTP) |
 
 ### WF2: Tracking Number Sync
 
@@ -72,9 +73,11 @@
 | 2 | **HTTP Request** | GET `/1.0/shipment` with `HasTracking=true&Status=Completed` filter |
 | 3 | **Function Node** | Match ShipBob shipments to Shopify order IDs via reference_id |
 | 4 | **HTTP Request** (Shopify) | POST `/admin/api/2024-01/orders/{id}/fulfillments.json` with tracking number and carrier |
-| 5 | **Error Handler** | Slack/Discord alert on failure |
+| 5 | **Error Handler** (Email) | Send failure details to `talaizenbsc@gmail.com` via SMTP |
 
-**Alternative**: If ShipBob webhook support is enabled on your plan, replace the Cron trigger with a ShipBob webhook trigger on `shipment_delivered` / `shipment_shipped` events.
+**Dual-mode tracking strategy** (since ShipBob webhook availability is unknown):
+- **Primary**: Cron polling every 15 minutes (always works, no plan dependency)
+- **Optional upgrade**: The workflow includes a separate Webhook Trigger node. If ShipBob webhooks (`shipment_shipped` / `shipment_delivered`) are available on your plan, enable them in ShipBob dashboard pointing to this n8n webhook URL. The workflow detects the source and processes either path identically. This gives you near-real-time sync when available, with polling as a reliable fallback.
 
 ### WF3: AI Technical Support Agent
 
@@ -82,7 +85,7 @@
 |------|--------------|---------|
 | 1 | **Webhook Trigger** | Receives customer question via POST (from chat widget, email parser, etc.) |
 | 2 | **AI Agent Node** (LangChain) | Configured with a system prompt scoped to Firewalla Gold Plus support |
-| 3 | **Vector Store Tool** | Retrieves relevant chunks from the uploaded PDF manual (stored in Qdrant/Pinecone/in-memory) |
+| 3 | **Vector Store Tool** | Retrieves relevant chunks from the uploaded PDF manual (stored in Qdrant with persistent disk storage) |
 | 4 | **Order Lookup Tool** | Sub-workflow that calls Shopify API to check order/tracking status |
 | 5 | **Respond to Webhook** | Returns the AI-generated answer |
 
@@ -126,6 +129,46 @@ Generate a PAT (Personal Access Token) in **ShipBob Dashboard > Settings > API**
 - Products: Read
 - Channels: Read
 
+### Lob Address Verification API
+
+Sign up at **lob.com** and generate a Live API key.
+
+| Endpoint | Method | Purpose | Used In |
+|----------|--------|---------|---------|
+| `/v1/us_verifications` | POST | CASS-certified USPS address verification | WF1 |
+
+**Why Lob (best practice for address validation):**
+- CASS-certified (USPS standard) - catches invalid/undeliverable addresses before they reach ShipBob
+- Returns `deliverability` score: `deliverable`, `deliverable_unnecessary_unit`, `deliverable_incorrect_unit`, `deliverable_missing_unit`, `undeliverable`
+- Auto-corrects minor formatting issues (apartment vs. apt, state abbreviation, ZIP+4)
+- Prevents costly ShipBob re-ships due to bad addresses (~$15-30 per re-ship on high-ticket items)
+- Free tier: 300 verifications/month (sufficient for low-volume high-ticket)
+- Fallback: If Lob is unreachable, the workflow falls back to regex validation (US ZIP, required fields) and flags the order for manual address review
+
+### Anthropic API (Claude)
+
+Generate an API key at **console.anthropic.com**.
+
+| Detail | Value |
+|--------|-------|
+| Model | `claude-sonnet-4-5-20250929` (best balance of cost, speed, and quality for support) |
+| Used In | WF3 (AI Support Agent) |
+| n8n Integration | Via the built-in **Anthropic Chat Model** node in n8n's AI/LangChain nodes |
+
+### Email (SMTP) for Error Alerts
+
+| Detail | Value |
+|--------|-------|
+| **Recipient** | `talaizenbsc@gmail.com` |
+| **Method** | n8n **Send Email** node via SMTP |
+| **Provider options** | Gmail App Password, SendGrid, or any SMTP relay |
+| **Used In** | WF1 (error handler, fraud alerts), WF2 (error handler) |
+
+**Why email over Slack/Discord:**
+- Direct to your inbox, no extra app to monitor
+- Gmail filters can be used to auto-label by severity (e.g., "fraud-alert" vs "api-error")
+- Works offline (you'll see it when you check email)
+
 ---
 
 ## 4. Data Mapping: Shopify Order -> ShipBob Order
@@ -155,16 +198,27 @@ Since Firewalla Gold Plus retails at ~$500+, every order is potentially high-tic
 
 **Automated fraud flags (any match -> manual review queue):**
 
-1. **Geo mismatch**: `billing_address.country_code != shipping_address.country_code`
-2. **Disposable email**: Check email domain against a known disposable-email list (maintained as a static JSON array or via API like `open.kickbox.com`)
-3. **Velocity check**: Same email or shipping address placed 3+ orders in 24 hours (query Shopify orders API with date filter)
-4. **High-risk shipping**: PO Box or freight forwarder addresses (regex pattern match)
+| # | Check | Implementation | Severity |
+|---|-------|---------------|----------|
+| 1 | **Geo mismatch** | `billing_address.country_code != shipping_address.country_code` | HIGH - halt pipeline |
+| 2 | **Disposable email** | Check email domain against bundled disposable-domain list (~3,000 domains as static JSON array in workflow). Updated quarterly. | HIGH - halt pipeline |
+| 3 | **Velocity check** | Query Shopify Orders API: `GET /orders.json?email={email}&created_at_min={24h_ago}&status=any`. Flag if count >= 3. Also checks by shipping address hash. | HIGH - halt pipeline |
+| 4 | **High-risk shipping** | Regex match for PO Box (`/p\.?\s*o\.?\s*box/i`), known freight forwarders (list of ~50 addresses: Shipito, MyUS, Planet Express, etc.) | MEDIUM - flag + allow with tag |
+| 5 | **Address undeliverable** | Lob API returns `deliverability: "undeliverable"` | HIGH - halt pipeline |
 
-**When flagged:**
+**When flagged (HIGH severity):**
 - Add tag `fraud-review` to Shopify order
-- Send Slack/Discord alert with order details
+- Send email alert to `talaizenbsc@gmail.com` with order details, flag reason, and a direct link to the Shopify order admin page
 - Do NOT forward to ShipBob (halt pipeline)
-- Human reviews and either clears (triggers manual re-run) or cancels
+- Human reviews and either:
+  - **Clears**: Remove `fraud-review` tag, add `fraud-cleared` tag -> triggers a separate n8n workflow (manual re-run webhook) that picks up the order and sends it to ShipBob
+  - **Cancels**: Cancel order in Shopify, refund issued
+
+**When flagged (MEDIUM severity):**
+- Add tag `fraud-watch` to Shopify order
+- Send informational email to `talaizenbsc@gmail.com`
+- Pipeline CONTINUES (order still sent to ShipBob)
+- Provides awareness without blocking legitimate orders to forwarding services
 
 ---
 
@@ -181,18 +235,21 @@ Any HTTP Request Node
    |         |
   Yes        No
    |         |
-  Slack    Continue
+  Email    Continue
   Alert    Pipeline
    |
-  Payload:
-  {
-    "text": "Order #{orderId} failed at {step}.
-             Status: {statusCode}.
-             Body: {responseBody}"
-  }
+  To: talaizenbsc@gmail.com
+  Subject: "[n8n] Order #{orderId} FAILED at {step}"
+  Body:
+    Order ID: {orderId}
+    Step: {step}
+    HTTP Status: {statusCode}
+    Response: {responseBody}
+    Shopify Admin Link: https://{shop}.myshopify.com/admin/orders/{orderId}
+    Timestamp: {ISO8601}
 ```
 
-Each workflow also has a global **Error Trigger** node that catches unhandled exceptions and sends them to the same Slack/Discord webhook.
+Each workflow also has a global **Error Trigger** node that catches unhandled exceptions and sends them to the same email address with subject prefix `[n8n CRITICAL]`.
 
 ---
 
@@ -201,18 +258,28 @@ Each workflow also has a global **Error Trigger** node that catches unhandled ex
 | Component | Detail |
 |-----------|--------|
 | **n8n** | Self-hosted Docker container (`n8nio/n8n:latest`) |
-| **Database** | SQLite (default) or PostgreSQL for production scale |
-| **Vector Store** (WF3) | Qdrant (Docker) or n8n's built-in in-memory store for small docs |
-| **LLM Provider** (WF3) | OpenAI `gpt-4o-mini` or Anthropic `claude-sonnet` via n8n AI nodes |
-| **Webhook Ingress** | n8n's built-in webhook URLs, fronted by a reverse proxy (Caddy/Nginx) with HTTPS |
+| **Database** | PostgreSQL (recommended for production - better concurrency, backup support, and n8n execution history retention) |
+| **Vector Store** (WF3) | **Qdrant** (Docker container, persistent disk volume) |
+| **LLM Provider** (WF3) | **Anthropic Claude** (`claude-sonnet-4-5-20250929`) via n8n's built-in Anthropic Chat Model node |
+| **Webhook Ingress** | n8n's built-in webhook URLs, fronted by Caddy (automatic HTTPS via Let's Encrypt) |
+| **Email Alerts** | n8n Send Email node via SMTP to `talaizenbsc@gmail.com` |
+
+**Why Qdrant over in-memory (best practice for vector store):**
+- Persistent storage: survives n8n container restarts (in-memory loses all embeddings on restart)
+- Handles PDF manuals up to hundreds of pages without memory pressure
+- Supports metadata filtering (e.g., filter by manual section/chapter)
+- Production-grade: used in real RAG deployments, not a toy
+- Lightweight: ~50MB Docker image, minimal resource usage
+- Still simple: single Docker container, no cluster needed at this scale
 
 ### Docker Compose (planned)
 
 ```
 services:
-  n8n:        # port 5678
-  qdrant:     # port 6333 (if using vector store)
-  caddy:      # port 443 (reverse proxy)
+  n8n:        # port 5678, connected to postgres
+  postgres:   # port 5432, persistent volume
+  qdrant:     # port 6333, persistent volume for vector embeddings
+  caddy:      # port 443, automatic HTTPS reverse proxy
 ```
 
 ---
@@ -232,18 +299,50 @@ services:
 | File | Description |
 |------|-------------|
 | `workflows/wf1-order-fulfillment.json` | n8n importable workflow for order pipeline |
-| `workflows/wf2-tracking-sync.json` | n8n importable workflow for tracking sync |
-| `workflows/wf3-ai-support-agent.json` | n8n importable workflow for AI agent |
-| `docker-compose.yml` | Full stack: n8n + qdrant + caddy |
+| `workflows/wf2-tracking-sync.json` | n8n importable workflow for tracking sync (dual-mode: poll + webhook) |
+| `workflows/wf3-ai-support-agent.json` | n8n importable workflow for AI agent with Claude + Qdrant |
+| `docker-compose.yml` | Full stack: n8n + PostgreSQL + Qdrant + Caddy |
+| `config/disposable-email-domains.json` | Static list of ~3,000 disposable email domains for fraud check |
+| `config/freight-forwarders.json` | Known freight forwarder addresses for fraud check |
 | `CLAUDE.md` | Project documentation with bash commands and API reference |
 
 ---
 
-## 10. Open Questions for You
+## 10. Resolved Decisions
 
-1. **Slack or Discord?** Which webhook integration do you want for error alerts?
-2. **Address validation**: Simple regex only, or do you want USPS/Lob API integration for production-grade validation?
-3. **AI Agent LLM**: OpenAI (gpt-4o-mini) or Anthropic (Claude) for the support agent node?
-4. **Vector store**: Qdrant (separate container) or n8n's built-in in-memory vector store (simpler, limited to ~50 pages)?
-5. **ShipBob webhooks**: Does your ShipBob plan support outbound webhooks, or should we stick with the polling approach for tracking sync?
-6. **Fraud velocity check**: Do you want the 3+ orders/24hr check implemented (requires an extra Shopify API call per order), or is geo + email + address pattern sufficient?
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| **Error alerts** | Email to `talaizenbsc@gmail.com` via SMTP | Direct inbox delivery, Gmail filter support |
+| **Address validation** | **Lob API** (CASS-certified USPS) with regex fallback | Best practice: prevents costly re-ships on $500+ product. Free tier covers low-volume high-ticket |
+| **LLM provider** | **Anthropic Claude** (`claude-sonnet-4-5-20250929`) | User choice. Excellent reasoning for technical support, native n8n node support |
+| **Vector store** | **Qdrant** (Docker, persistent disk) | Best practice: survives restarts, scales to large manuals, metadata filtering |
+| **Tracking sync** | **Dual-mode**: Cron polling (primary) + ShipBob webhook (optional) | Covers unknown webhook availability. Polling always works; webhook upgrades to near-real-time if supported |
+| **Fraud velocity check** | **Included** (3+ orders/24hr from same email or address) | Extra Shopify API call per order is acceptable for high-ticket margin protection |
+
+---
+
+## 11. Credentials You Will Need to Provide
+
+Before the workflows can go live, configure these as **n8n Credentials** (Settings > Credentials):
+
+| Credential | Type | Where to Get It |
+|------------|------|-----------------|
+| Shopify Admin API access token | Shopify API | Settings > Apps > Develop apps > Create app > API credentials |
+| ShipBob PAT | HTTP Header Auth | ShipBob Dashboard > Settings > API > Personal Access Token |
+| Lob API key (live) | HTTP Header Auth | lob.com > Dashboard > API Keys |
+| Anthropic API key | Anthropic credential | console.anthropic.com > API Keys |
+| SMTP credentials | SMTP (Email) | Gmail App Password, SendGrid API key, or any SMTP relay |
+
+---
+
+## 12. Cost Estimates (Monthly, Low Volume)
+
+| Service | Free Tier | Estimated Cost at ~50 orders/mo |
+|---------|-----------|-------------------------------|
+| Lob address verification | 300/mo free | $0 (well within free tier) |
+| Anthropic Claude API | Pay-per-use | ~$2-5/mo (support queries, sonnet pricing) |
+| ShipBob | Per-order fulfillment | Varies by contract (not an API cost) |
+| Shopify | Plan-dependent | Already covered by existing plan |
+| n8n (self-hosted) | Free | $0 (self-hosted Docker) |
+| Qdrant (self-hosted) | Free | $0 (self-hosted Docker) |
+| **Total incremental API costs** | | **~$2-5/mo** |

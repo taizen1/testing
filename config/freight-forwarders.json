@@ -1,0 +1,265 @@
+{
+  "companies": [
+    {
+      "name": "Shipito",
+      "patterns": ["shipito"],
+      "known_addresses": [
+        "1674 S Pioneer Rd, Salt Lake City, UT 84104",
+        "1860 W 2100 S, Salt Lake City, UT 84119"
+      ]
+    },
+    {
+      "name": "MyUS",
+      "patterns": ["myus", "access usa", "accessusa"],
+      "known_addresses": [
+        "7001 Lakeview Plaza Dr, Sarasota, FL 34240",
+        "7000 Lakeview Plaza Dr, Sarasota, FL 34240"
+      ]
+    },
+    {
+      "name": "Planet Express",
+      "patterns": ["planet express", "planetexpress"],
+      "known_addresses": [
+        "5850 W 3rd St, Los Angeles, CA 90036",
+        "11 Broadway, New York, NY 10004"
+      ]
+    },
+    {
+      "name": "Stackry",
+      "patterns": ["stackry"],
+      "known_addresses": [
+        "2321 N Loop Dr, Ste 200, Ames, IA 50010",
+        "30 N Gould St, Sheridan, WY 82801"
+      ]
+    },
+    {
+      "name": "Borderlinx",
+      "patterns": ["borderlinx", "viaaddress", "via address"],
+      "known_addresses": [
+        "3040 Post Rd, Warwick, RI 02886"
+      ]
+    },
+    {
+      "name": "USGoBuy",
+      "patterns": ["usgobuy", "us go buy"],
+      "known_addresses": [
+        "4630 NE Belknap Ct, Hillsboro, OR 97124",
+        "1520 N 13th St, Boise, ID 83702"
+      ]
+    },
+    {
+      "name": "Comgateway",
+      "patterns": ["comgateway", "com gateway"],
+      "known_addresses": [
+        "2525 E Franklin Ave, El Paso, TX 79903",
+        "4851 Tamiami Trail N, Naples, FL 34103"
+      ]
+    },
+    {
+      "name": "ShopUSA",
+      "patterns": ["shopusa", "shop usa"],
+      "known_addresses": [
+        "18305 Biscayne Blvd, Aventura, FL 33160"
+      ]
+    },
+    {
+      "name": "Big Apple Buddy",
+      "patterns": ["big apple buddy", "bigapplebuddy"],
+      "known_addresses": [
+        "228 Park Ave S, New York, NY 10003"
+      ]
+    },
+    {
+      "name": "HopShopGo",
+      "patterns": ["hopshopgo", "hop shop go"],
+      "known_addresses": [
+        "925 N Point St, San Francisco, CA 94109"
+      ]
+    },
+    {
+      "name": "forward2me",
+      "patterns": ["forward2me", "forward 2 me"],
+      "known_addresses": [
+        "1701 N Market St, Dallas, TX 75202",
+        "Unit 2, Forward House, 17 High Street, Henley-in-Arden, B95 5AA, UK"
+      ]
+    },
+    {
+      "name": "Fishisfast",
+      "patterns": ["fishisfast", "fish is fast"],
+      "known_addresses": [
+        "19800 MacArthur Blvd, Irvine, CA 92612"
+      ]
+    },
+    {
+      "name": "Parcl",
+      "patterns": ["parcl", "parcel.com"],
+      "known_addresses": [
+        "320 N Halstead St, Pasadena, CA 91107"
+      ]
+    },
+    {
+      "name": "Viabox",
+      "patterns": ["viabox", "via box"],
+      "known_addresses": [
+        "2556 Aloma Ave, Winter Park, FL 32792"
+      ]
+    },
+    {
+      "name": "Reship",
+      "patterns": ["reship", "re-ship"],
+      "known_addresses": [
+        "8285 SW Nimbus Ave, Beaverton, OR 97008",
+        "4630 NE Belknap Ct, Hillsboro, OR 97124"
+      ]
+    },
+    {
+      "name": "Shipzilla",
+      "patterns": ["shipzilla", "ship zilla"],
+      "known_addresses": [
+        "18305 Biscayne Blvd, Aventura, FL 33160"
+      ]
+    },
+    {
+      "name": "MyMallBox",
+      "patterns": ["mymallbox", "my mall box"],
+      "known_addresses": [
+        "7911 NE 33rd Dr, Portland, OR 97211"
+      ]
+    },
+    {
+      "name": "USABox",
+      "patterns": ["usabox", "usa box"],
+      "known_addresses": [
+        "1220 NW 3rd Ave, Portland, OR 97209"
+      ]
+    },
+    {
+      "name": "Bongo International",
+      "patterns": ["bongo international", "bongous", "fiftyone"],
+      "known_addresses": [
+        "1601 Trapelo Rd, Waltham, MA 02451"
+      ]
+    },
+    {
+      "name": "Shipforwarders",
+      "patterns": ["shipforwarders", "ship forwarders"],
+      "known_addresses": []
+    },
+    {
+      "name": "Opas Express",
+      "patterns": ["opas express", "opasexpress"],
+      "known_addresses": [
+        "1860 W 2100 S, Salt Lake City, UT 84119"
+      ]
+    },
+    {
+      "name": "ShipByMail",
+      "patterns": ["shipbymail", "ship by mail"],
+      "known_addresses": []
+    },
+    {
+      "name": "USAMailbox",
+      "patterns": ["usamailbox", "usa mailbox"],
+      "known_addresses": []
+    },
+    {
+      "name": "PostScanMail",
+      "patterns": ["postscanmail", "post scan mail"],
+      "known_addresses": [
+        "1655 N Fort Myer Dr, Arlington, VA 22209"
+      ]
+    },
+    {
+      "name": "USAddress",
+      "patterns": ["usaddress", "us address"],
+      "known_addresses": []
+    },
+    {
+      "name": "Skypax",
+      "patterns": ["skypax", "sky pax"],
+      "known_addresses": [
+        "1860 W 2100 S, Salt Lake City, UT 84119"
+      ]
+    },
+    {
+      "name": "Shippn",
+      "patterns": ["shippn"],
+      "known_addresses": []
+    },
+    {
+      "name": "Parcel Monkey",
+      "patterns": ["parcel monkey", "parcelmonkey"],
+      "known_addresses": []
+    },
+    {
+      "name": "MyUKMailbox",
+      "patterns": ["myukmailbox", "my uk mailbox"],
+      "known_addresses": []
+    },
+    {
+      "name": "PostNet",
+      "patterns": ["postnet", "post net"],
+      "known_addresses": []
+    },
+    {
+      "name": "Jet-Ship",
+      "patterns": ["jet-ship", "jetship", "jet ship"],
+      "known_addresses": []
+    },
+    {
+      "name": "ShipItAPO",
+      "patterns": ["shipitapo", "ship it apo"],
+      "known_addresses": [
+        "1860 W 2100 S, Salt Lake City, UT 84119"
+      ]
+    },
+    {
+      "name": "USPatriotMail",
+      "patterns": ["uspatriotmail", "us patriot mail"],
+      "known_addresses": []
+    },
+    {
+      "name": "USA2Me",
+      "patterns": ["usa2me", "usa 2 me"],
+      "known_addresses": []
+    },
+    {
+      "name": "MyShopBox",
+      "patterns": ["myshopbox", "my shop box"],
+      "known_addresses": []
+    },
+    {
+      "name": "ShipToBox",
+      "patterns": ["shiptobox", "ship to box"],
+      "known_addresses": []
+    }
+  ],
+  "address_keywords": [
+    "freight forward",
+    "package forward",
+    "mail forward",
+    "parcel forward",
+    "shipping forward",
+    "warehouse",
+    "consolidation",
+    "remail",
+    "reship",
+    "re-ship",
+    "suite rental",
+    "mailbox rental",
+    "virtual mailbox",
+    "commercial mail receiving agency",
+    "cmra",
+    "mail drop",
+    "shipping agent",
+    "forwarding service",
+    "international shipping",
+    "package consolidation",
+    "mail receiving",
+    "logistics center",
+    "distribution center",
+    "fulfillment center"
+  ],
+  "po_box_regex": "(?:p\\.?\\s*o\\.?\\s*box|post\\s*office\\s*box)\\s*\\d+"
+}

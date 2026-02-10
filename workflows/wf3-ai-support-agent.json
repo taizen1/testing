@@ -1,0 +1,345 @@
+{
+  "name": "WF3: AI Technical Support Agent (Firewalla Gold Plus)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "support-agent",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Customer Question Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "notes": "Receives POST with JSON body: { \"question\": \"...\", \"email\": \"optional@email.com\", \"session_id\": \"optional-session-id\" }"
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// Validate and normalize the incoming request\n// ──────────────────────────────────────────────\nconst body = $input.first().json.body || $input.first().json;\n\nconst question = (body.question || body.message || '').trim();\nconst email = (body.email || '').trim().toLowerCase();\nconst sessionId = body.session_id || body.sessionId || `session_${Date.now()}`;\n\nif (!question) {\n  return [{\n    json: {\n      _error: true,\n      response: 'Please provide a question in the request body. Example: { \"question\": \"How do I set up VPN on Firewalla Gold Plus?\" }'\n    }\n  }];\n}\n\n// Basic input sanitization (prevent prompt injection attempts)\nconst sanitized = question\n  .replace(/ignore\\s+(previous|all|above)\\s+instructions?/gi, '[filtered]')\n  .replace(/you\\s+are\\s+now/gi, '[filtered]')\n  .replace(/system\\s*prompt/gi, '[filtered]')\n  .substring(0, 2000); // Limit question length\n\nreturn [{\n  json: {\n    question: sanitized,\n    email,\n    sessionId,\n    _error: false\n  }\n}];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-error",
+              "leftValue": "={{ $json._error }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-error",
+      "name": "Input Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: true, response: $json.response }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [660, 180]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.question }}",
+        "options": {
+          "systemMessage": "You are a technical support agent for the Firewalla Gold Plus, a premium network security and firewall appliance. Your role is to:\n\n1. Answer pre-sale questions about the Firewalla Gold Plus features, specifications, and capabilities.\n2. Provide technical support for setup, configuration, VPN, ad blocking, parental controls, network segmentation, and IDS/IPS features.\n3. Help customers check their order status when they provide an email address.\n4. Refer customers to official Firewalla support (support@firewalla.com) for issues you cannot resolve.\n\nGuidelines:\n- Be concise but thorough. Use bullet points for multi-step instructions.\n- Always cite the relevant section of the manual when answering from the knowledge base.\n- If you don't know the answer, say so honestly and suggest contacting Firewalla support.\n- Never make up specifications or features.\n- For order/tracking questions, use the order lookup tool if the customer provides their email.\n- You represent a reseller, not Firewalla directly. For warranty claims, direct customers to Firewalla.\n- Do not discuss pricing of competitors or make claims about other products.\n- Keep responses under 500 words unless a detailed walkthrough is needed.\n\nProduct Quick Reference:\n- Firewalla Gold Plus: Multi-gigabit firewall/router\n- 4x 2.5GbE ports, Wi-Fi 6 capable with external AP\n- IDS/IPS, VPN server/client (WireGuard, OpenVPN), ad blocking\n- Network segmentation, parental controls, bandwidth monitoring\n- No subscription fees - all features included",
+          "maxIterations": 5,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "ai-agent",
+      "name": "AI Support Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [660, 400]
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-5-20250929",
+        "options": {
+          "maxTokensToSample": 1024,
+          "temperature": 0.3
+        }
+      },
+      "id": "anthropic-model",
+      "name": "Anthropic Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [660, 600],
+      "credentials": {
+        "anthropicApi": {
+          "id": "ANTHROPIC_CREDENTIAL_ID",
+          "name": "Anthropic API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "qdrantCollection": {
+          "__rl": true,
+          "mode": "list",
+          "value": "firewalla-manual"
+        },
+        "options": {
+          "topK": 5
+        }
+      },
+      "id": "qdrant-retriever",
+      "name": "Qdrant Vector Store Retriever",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1,
+      "position": [820, 600],
+      "credentials": {
+        "qdrantApi": {
+          "id": "QDRANT_CREDENTIAL_ID",
+          "name": "Qdrant Local"
+        }
+      },
+      "notes": "Connects to local Qdrant instance (qdrant:6333). Collection 'firewalla-manual' must be populated separately via the manual ingestion workflow."
+    },
+    {
+      "parameters": {
+        "name": "order_lookup",
+        "description": "Look up a customer's order status and tracking information using their email address. Use this tool when a customer asks about their order, shipping status, or tracking number.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "fields": {
+          "values": [
+            {
+              "name": "email",
+              "description": "The customer's email address",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "order-lookup-tool",
+      "name": "Order Lookup Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.2,
+      "position": [980, 600],
+      "notes": "Calls the Order Lookup sub-workflow. Set the workflowId after importing."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.output, session_id: $('Validate Input').first().json.sessionId, timestamp: new Date().toISOString() }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-success",
+      "name": "Respond with Answer",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [880, 400]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "order-lookup",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "order-lookup-webhook",
+      "name": "Order Lookup Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 800],
+      "notes": "Sub-workflow: Called by the AI Agent's order_lookup tool"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/api/2024-01/orders.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "={{ $json.body?.email || $json.email }}"
+            },
+            {
+              "name": "status",
+              "value": "any"
+            },
+            {
+              "name": "limit",
+              "value": "5"
+            },
+            {
+              "name": "fields",
+              "value": "id,name,created_at,financial_status,fulfillment_status,total_price,currency,fulfillments,line_items"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "shopify-order-lookup",
+      "name": "Shopify Order Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 800],
+      "credentials": {
+        "shopifyApi": {
+          "id": "SHOPIFY_CREDENTIAL_ID",
+          "name": "Shopify Admin API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// Format order lookup results for the AI agent\n// ──────────────────────────────────────────────\nconst response = $input.first().json;\nconst orders = response.orders || [];\n\nif (orders.length === 0) {\n  return [{ json: { result: 'No orders found for this email address. The customer may have used a different email to place their order.' } }];\n}\n\nconst formatted = orders.map(order => {\n  const tracking = (order.fulfillments || [])\n    .map(f => `${f.tracking_company || 'N/A'}: ${f.tracking_number || 'pending'}`)\n    .join(', ') || 'Not yet shipped';\n\n  const items = (order.line_items || [])\n    .map(li => `${li.name} x${li.quantity}`)\n    .join(', ');\n\n  return [\n    `Order ${order.name}:`,\n    `  Placed: ${new Date(order.created_at).toLocaleDateString()}`,\n    `  Total: $${order.total_price} ${order.currency}`,\n    `  Payment: ${order.financial_status}`,\n    `  Fulfillment: ${order.fulfillment_status || 'unfulfilled'}`,\n    `  Items: ${items}`,\n    `  Tracking: ${tracking}`\n  ].join('\\n');\n}).join('\\n\\n');\n\nreturn [{ json: { result: formatted } }];"
+      },
+      "id": "format-order-results",
+      "name": "Format Order Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 800]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "talaizenbsc@gmail.com",
+        "subject": "=[n8n CRITICAL] Unhandled error in AI Support Agent workflow",
+        "text": "=🔴 CRITICAL UNHANDLED ERROR\n\nWorkflow: WF3 - AI Support Agent\nError: {{ $json.execution?.error?.message || 'Unknown error' }}\nNode: {{ $json.execution?.lastNodeExecuted || 'Unknown' }}\nExecution ID: {{ $json.execution?.id || 'Unknown' }}\nTimestamp: {{ new Date().toISOString() }}\n\nCheck the n8n execution log for full details.",
+        "options": {}
+      },
+      "id": "global-error-handler",
+      "name": "Global Error Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [220, 1000],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 1000]
+    }
+  ],
+  "connections": {
+    "Customer Question Webhook": {
+      "main": [
+        [{ "node": "Validate Input", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [{ "node": "Input Valid?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Input Valid?": {
+      "main": [
+        [{ "node": "Respond Error", "type": "main", "index": 0 }],
+        [{ "node": "AI Support Agent", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI Support Agent": {
+      "main": [
+        [{ "node": "Respond with Answer", "type": "main", "index": 0 }]
+      ]
+    },
+    "Anthropic Claude": {
+      "ai_languageModel": [
+        [{ "node": "AI Support Agent", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "Qdrant Vector Store Retriever": {
+      "ai_tool": [
+        [{ "node": "AI Support Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Order Lookup Tool": {
+      "ai_tool": [
+        [{ "node": "AI Support Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Order Lookup Trigger": {
+      "main": [
+        [{ "node": "Shopify Order Lookup", "type": "main", "index": 0 }]
+      ]
+    },
+    "Shopify Order Lookup": {
+      "main": [
+        [{ "node": "Format Order Results", "type": "main", "index": 0 }]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [{ "node": "Global Error Email", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "ai-agent" },
+    { "name": "support" },
+    { "name": "firewalla" },
+    { "name": "production" }
+  ],
+  "pinData": {},
+  "versionId": "1"
+}

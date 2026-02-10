@@ -1,0 +1,644 @@
+{
+  "name": "WF1: Shopify Order → ShipBob Fulfillment",
+  "nodes": [
+    {
+      "parameters": {
+        "topic": "orders/paid",
+        "options": {}
+      },
+      "id": "shopify-trigger",
+      "name": "Shopify Order Paid",
+      "type": "n8n-nodes-base.shopifyTrigger",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "credentials": {
+        "shopifyApi": {
+          "id": "SHOPIFY_CREDENTIAL_ID",
+          "name": "Shopify Admin API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// HMAC Signature Verification for Shopify Webhook\n// ──────────────────────────────────────────────\nconst crypto = require('crypto');\n\nconst shopifySecret = $env.SHOPIFY_WEBHOOK_SECRET;\nconst hmacHeader = $input.first().headers['x-shopify-hmac-sha256'];\nconst rawBody = $input.first().rawBody;\n\nif (!hmacHeader || !rawBody || !shopifySecret) {\n  throw new Error('Missing HMAC header, raw body, or webhook secret');\n}\n\nconst computedHmac = crypto\n  .createHmac('sha256', shopifySecret)\n  .update(rawBody, 'utf8')\n  .digest('base64');\n\nconst isValid = crypto.timingSafeEqual(\n  Buffer.from(hmacHeader),\n  Buffer.from(computedHmac)\n);\n\nif (!isValid) {\n  throw new Error('Invalid Shopify webhook HMAC signature - possible forgery');\n}\n\nreturn $input.all();"
+      },
+      "id": "hmac-verify",
+      "name": "Verify HMAC Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "high-ticket-check",
+              "leftValue": "={{ parseFloat($json.total_price) }}",
+              "rightValue": 250,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "high-ticket-gate",
+      "name": "High-Ticket Gate (≥$250)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/api/2024-01/orders/{{ $json.id }}.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "order",
+              "value": "={{ JSON.stringify({ id: $json.id, tags: ($json.tags ? $json.tags + ', high-ticket' : 'high-ticket') }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "tag-high-ticket",
+      "name": "Tag as High-Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 200],
+      "credentials": {
+        "shopifyApi": {
+          "id": "SHOPIFY_CREDENTIAL_ID",
+          "name": "Shopify Admin API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// Fraud Detection: 5-Check Pipeline\n// ──────────────────────────────────────────────\nconst order = $input.first().json;\nconst flags = [];\nlet severity = 'CLEAN';\n\n// --- Check 1: Geo Mismatch ---\nconst billingCountry = order.billing_address?.country_code || '';\nconst shippingCountry = order.shipping_address?.country_code || '';\nif (billingCountry && shippingCountry && billingCountry !== shippingCountry) {\n  flags.push({ check: 'GEO_MISMATCH', severity: 'HIGH', detail: `Billing: ${billingCountry}, Shipping: ${shippingCountry}` });\n}\n\n// --- Check 2: Disposable Email ---\nconst email = (order.email || '').toLowerCase();\nconst emailDomain = email.split('@')[1] || '';\n\n// Load disposable domains from workflow static data or fallback list\nlet disposableDomains = [];\ntry {\n  const staticData = $getWorkflowStaticData('global');\n  if (staticData.disposableDomains) {\n    disposableDomains = staticData.disposableDomains;\n  }\n} catch(e) {\n  // Fallback: top 50 most common disposable domains\n  disposableDomains = [\n    'mailinator.com','guerrillamail.com','tempmail.com','throwaway.email',\n    'yopmail.com','sharklasers.com','guerrillamailblock.com','grr.la',\n    'dispostable.com','maildrop.cc','temp-mail.org','fakeinbox.com',\n    'trashmail.com','getnada.com','mohmal.com','emailondeck.com',\n    'tempr.email','10minutemail.com','mailnesia.com','tmpmail.net'\n  ];\n}\n\nif (disposableDomains.includes(emailDomain)) {\n  flags.push({ check: 'DISPOSABLE_EMAIL', severity: 'HIGH', detail: `Domain: ${emailDomain}` });\n}\n\n// --- Check 3: High-Risk Shipping (PO Box / Freight Forwarder) ---\nconst addr1 = (order.shipping_address?.address1 || '').toLowerCase();\nconst addr2 = (order.shipping_address?.address2 || '').toLowerCase();\nconst fullAddr = `${addr1} ${addr2}`;\n\n// PO Box detection\nconst poBoxRegex = /p\\.?\\s*o\\.?\\s*box\\s*\\d+|post\\s*office\\s*box/i;\nif (poBoxRegex.test(fullAddr)) {\n  flags.push({ check: 'PO_BOX', severity: 'MEDIUM', detail: `Address: ${fullAddr.trim()}` });\n}\n\n// Freight forwarder keyword detection\nconst forwarderKeywords = [\n  'shipito', 'myus.com', 'planet express', 'stackry', 'borderlinx',\n  'usgobuy', 'comgateway', 'shopusa', 'viabox', 'reship',\n  'fishisfast', 'forward2me', 'parcl', 'opas.com', 'myusaddress'\n];\nconst matchedForwarder = forwarderKeywords.find(kw => fullAddr.includes(kw));\nif (matchedForwarder) {\n  flags.push({ check: 'FREIGHT_FORWARDER', severity: 'MEDIUM', detail: `Matched: ${matchedForwarder}` });\n}\n\n// --- Determine overall severity ---\nconst hasHigh = flags.some(f => f.severity === 'HIGH');\nconst hasMedium = flags.some(f => f.severity === 'MEDIUM');\nif (hasHigh) severity = 'HIGH';\nelse if (hasMedium) severity = 'MEDIUM';\n\nreturn [{\n  json: {\n    ...order,\n    _fraud: {\n      flags,\n      severity,\n      flagCount: flags.length,\n      checkedAt: new Date().toISOString()\n    }\n  }\n}];"
+      },
+      "id": "fraud-check-local",
+      "name": "Fraud Check (Local)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 300],
+      "notes": "Checks 1-3: Geo mismatch, disposable email, PO box / freight forwarder. Velocity check is a separate node (requires API call)."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/api/2024-01/orders.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "={{ $json.email }}"
+            },
+            {
+              "name": "created_at_min",
+              "value": "={{ new Date(Date.now() - 24*60*60*1000).toISOString() }}"
+            },
+            {
+              "name": "status",
+              "value": "any"
+            },
+            {
+              "name": "fields",
+              "value": "id,email,shipping_address"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "velocity-check-api",
+      "name": "Velocity Check (Shopify API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 300],
+      "credentials": {
+        "shopifyApi": {
+          "id": "SHOPIFY_CREDENTIAL_ID",
+          "name": "Shopify Admin API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// Velocity Check: Evaluate order frequency\n// ──────────────────────────────────────────────\nconst order = $('Fraud Check (Local)').first().json;\nconst velocityResponse = $input.first().json;\nconst flags = [...order._fraud.flags];\nlet severity = order._fraud.severity;\n\n// Count orders from same email in last 24h\nconst recentOrders = velocityResponse.orders || [];\nif (recentOrders.length >= 3) {\n  flags.push({\n    check: 'VELOCITY_EMAIL',\n    severity: 'HIGH',\n    detail: `${recentOrders.length} orders from ${order.email} in 24h`\n  });\n  severity = 'HIGH';\n}\n\n// Check for same shipping address across recent orders\nconst currentAddrHash = JSON.stringify({\n  a1: (order.shipping_address?.address1 || '').toLowerCase().trim(),\n  zip: (order.shipping_address?.zip || '').trim()\n});\nconst sameAddrCount = recentOrders.filter(o => {\n  const h = JSON.stringify({\n    a1: (o.shipping_address?.address1 || '').toLowerCase().trim(),\n    zip: (o.shipping_address?.zip || '').trim()\n  });\n  return h === currentAddrHash;\n}).length;\n\nif (sameAddrCount >= 3) {\n  flags.push({\n    check: 'VELOCITY_ADDRESS',\n    severity: 'HIGH',\n    detail: `${sameAddrCount} orders to same address in 24h`\n  });\n  severity = 'HIGH';\n}\n\nreturn [{\n  json: {\n    ...order,\n    _fraud: {\n      flags,\n      severity,\n      flagCount: flags.length,\n      checkedAt: order._fraud.checkedAt\n    }\n  }\n}];"
+      },
+      "id": "velocity-evaluate",
+      "name": "Evaluate Velocity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "fraud-severity-check",
+              "leftValue": "={{ $json._fraud.severity }}",
+              "rightValue": "HIGH",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fraud-gate-high",
+      "name": "Fraud Severity = HIGH?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/api/2024-01/orders/{{ $json.id }}.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ order: { id: $json.id, tags: ($json.tags ? $json.tags + ', fraud-review' : 'fraud-review') } }) }}",
+        "options": {}
+      },
+      "id": "tag-fraud-review",
+      "name": "Tag fraud-review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 160],
+      "credentials": {
+        "shopifyApi": {
+          "id": "SHOPIFY_CREDENTIAL_ID",
+          "name": "Shopify Admin API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "talaizenbsc@gmail.com",
+        "subject": "=[n8n FRAUD ALERT] Order #{{ $json.order_number }} flagged - {{ $json._fraud.severity }}",
+        "text": "=🚨 FRAUD ALERT - Order Halted\n\nOrder #{{ $json.order_number }} (ID: {{ $json.id }})\nCustomer: {{ $json.email }}\nTotal: ${{ $json.total_price }} {{ $json.currency }}\n\nShipping To:\n{{ $json.shipping_address?.name }}\n{{ $json.shipping_address?.address1 }} {{ $json.shipping_address?.address2 || '' }}\n{{ $json.shipping_address?.city }}, {{ $json.shipping_address?.province }} {{ $json.shipping_address?.zip }}\n{{ $json.shipping_address?.country }}\n\nFraud Flags:\n{{ $json._fraud.flags.map(f => `  [${f.severity}] ${f.check}: ${f.detail}`).join('\\n') }}\n\nAction Required: Review this order in Shopify Admin.\nhttps://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/orders/{{ $json.id }}\n\n⚠️ This order was NOT sent to ShipBob. Clear the fraud-review tag and trigger the re-run webhook to process it.",
+        "options": {}
+      },
+      "id": "email-fraud-alert",
+      "name": "Email Fraud Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1980, 160],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "fraud-medium-check",
+              "leftValue": "={{ $json._fraud.severity }}",
+              "rightValue": "MEDIUM",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fraud-gate-medium",
+      "name": "Fraud Severity = MEDIUM?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1760, 440]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/api/2024-01/orders/{{ $json.id }}.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ order: { id: $json.id, tags: ($json.tags ? $json.tags + ', fraud-watch' : 'fraud-watch') } }) }}",
+        "options": {}
+      },
+      "id": "tag-fraud-watch",
+      "name": "Tag fraud-watch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, 380],
+      "credentials": {
+        "shopifyApi": {
+          "id": "SHOPIFY_CREDENTIAL_ID",
+          "name": "Shopify Admin API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "talaizenbsc@gmail.com",
+        "subject": "=[n8n INFO] Order #{{ $json.order_number }} flagged fraud-watch (processing continues)",
+        "text": "=ℹ️ FRAUD WATCH - Order Processing Continues\n\nOrder #{{ $json.order_number }} (ID: {{ $json.id }})\nCustomer: {{ $json.email }}\nTotal: ${{ $json.total_price }} {{ $json.currency }}\n\nFlags (MEDIUM severity - order still sent to ShipBob):\n{{ $json._fraud.flags.filter(f => f.severity === 'MEDIUM').map(f => `  [${f.severity}] ${f.check}: ${f.detail}`).join('\\n') }}\n\nShopify Admin: https://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/orders/{{ $json.id }}",
+        "options": {}
+      },
+      "id": "email-fraud-watch",
+      "name": "Email Fraud Watch",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [2200, 380],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.lob.com/v1/us_verifications",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ primary_line: $json.shipping_address?.address1 || '', secondary_line: $json.shipping_address?.address2 || '', city: $json.shipping_address?.city || '', state: $json.shipping_address?.province_code || '', zip_code: $json.shipping_address?.zip || '' }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "lob-address-verify",
+      "name": "Lob Address Verification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, 540],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "LOB_CREDENTIAL_ID",
+          "name": "Lob API Key"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Uses Lob CASS-certified USPS verification. Basic Auth with API key as username, empty password."
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// Evaluate Lob Address Verification Result\n// ──────────────────────────────────────────────\nconst order = $('Fraud Severity = MEDIUM?').first()?.json || $('Fraud Severity = HIGH?').first()?.json;\nconst lobResult = $input.first().json;\n\n// If Lob call failed, fall back to regex validation\nif (!lobResult || lobResult.error || !lobResult.deliverability) {\n  // Fallback: basic regex checks\n  const zip = order.shipping_address?.zip || '';\n  const usZipRegex = /^\\d{5}(-\\d{4})?$/;\n  const requiredFields = ['address1', 'city', 'province', 'zip', 'country'];\n  const missingFields = requiredFields.filter(f => !order.shipping_address?.[f]);\n\n  if (missingFields.length > 0) {\n    return [{ json: { ...order, _address: { status: 'INVALID', method: 'regex_fallback', reason: `Missing fields: ${missingFields.join(', ')}` } } }];\n  }\n  if (order.shipping_address?.country_code === 'US' && !usZipRegex.test(zip)) {\n    return [{ json: { ...order, _address: { status: 'INVALID', method: 'regex_fallback', reason: `Invalid US ZIP: ${zip}` } } }];\n  }\n  return [{ json: { ...order, _address: { status: 'VALID', method: 'regex_fallback', reason: 'Lob unavailable, regex passed' } } }];\n}\n\n// Evaluate Lob deliverability\nconst deliverability = lobResult.deliverability;\nconst undeliverable = deliverability === 'undeliverable';\n\n// Use corrected address from Lob if deliverable\nlet correctedAddress = null;\nif (!undeliverable && lobResult.primary_line) {\n  correctedAddress = {\n    address1: lobResult.primary_line,\n    address2: lobResult.secondary_line || '',\n    city: lobResult.components?.city || order.shipping_address?.city,\n    state: lobResult.components?.state || order.shipping_address?.province_code,\n    zip: lobResult.components?.zip_code ? `${lobResult.components.zip_code}-${lobResult.components.zip_code_plus_4 || ''}`.replace(/-$/, '') : order.shipping_address?.zip\n  };\n}\n\nreturn [{\n  json: {\n    ...order,\n    _address: {\n      status: undeliverable ? 'UNDELIVERABLE' : 'VALID',\n      method: 'lob_cass',\n      deliverability,\n      correctedAddress,\n      lobId: lobResult.id\n    }\n  }\n}];"
+      },
+      "id": "evaluate-address",
+      "name": "Evaluate Address Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2420, 540]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "address-valid-check",
+              "leftValue": "={{ $json._address.status }}",
+              "rightValue": "UNDELIVERABLE",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "address-gate",
+      "name": "Address Deliverable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2640, 540]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "talaizenbsc@gmail.com",
+        "subject": "=[n8n FRAUD ALERT] Order #{{ $json.order_number }} - UNDELIVERABLE ADDRESS",
+        "text": "=🚨 ADDRESS UNDELIVERABLE - Order Halted\n\nOrder #{{ $json.order_number }} (ID: {{ $json.id }})\nCustomer: {{ $json.email }}\nTotal: ${{ $json.total_price }} {{ $json.currency }}\n\nAddress verification by Lob returned: {{ $json._address.deliverability }}\n\nAddress:\n{{ $json.shipping_address?.address1 }} {{ $json.shipping_address?.address2 || '' }}\n{{ $json.shipping_address?.city }}, {{ $json.shipping_address?.province }} {{ $json.shipping_address?.zip }}\n\nAction Required: Contact customer or cancel order.\nhttps://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/orders/{{ $json.id }}",
+        "options": {}
+      },
+      "id": "email-address-fail",
+      "name": "Email Undeliverable Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [2860, 700],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// Map Shopify Order → ShipBob Order Payload\n// ──────────────────────────────────────────────\nconst order = $input.first().json;\nconst addr = order._address?.correctedAddress || order.shipping_address;\n\nconst shipbobPayload = {\n  shipping_method: 'Standard',\n  recipient: {\n    name: order.shipping_address?.name || `${order.shipping_address?.first_name || ''} ${order.shipping_address?.last_name || ''}`.trim(),\n    address: {\n      address1: addr.address1 || order.shipping_address?.address1,\n      address2: addr.address2 || order.shipping_address?.address2 || '',\n      city: addr.city || order.shipping_address?.city,\n      state: addr.state || order.shipping_address?.province_code,\n      country: order.shipping_address?.country_code || 'US',\n      zip_code: addr.zip || order.shipping_address?.zip\n    },\n    email: order.email,\n    phone_number: order.shipping_address?.phone || ''\n  },\n  products: (order.line_items || []).map(item => ({\n    reference_id: item.sku || String(item.product_id),\n    quantity: item.quantity,\n    name: item.name\n  })),\n  reference_id: String(order.id),\n  order_number: String(order.order_number),\n  tags: [\n    { name: 'shopify_order_id', value: String(order.id) },\n    { name: 'source', value: 'n8n-automation' }\n  ]\n};\n\nreturn [{ json: { _shipbobPayload: shipbobPayload, _originalOrder: order } }];"
+      },
+      "id": "map-to-shipbob",
+      "name": "Map to ShipBob Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2860, 440]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.shipbob.com/1.0/order",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "shipbob_channel_id",
+              "value": "={{ $env.SHIPBOB_CHANNEL_ID }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json._shipbobPayload) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "shipbob-create-order",
+      "name": "ShipBob Create Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3080, 440],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SHIPBOB_CREDENTIAL_ID",
+          "name": "ShipBob PAT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "shipbob-success-check",
+              "leftValue": "={{ $json.id ? true : false }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "shipbob-response-check",
+      "name": "ShipBob Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3300, 440]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log success for audit trail\nconst shipbobResponse = $input.first().json;\nreturn [{\n  json: {\n    status: 'SUCCESS',\n    shipbob_order_id: shipbobResponse.id,\n    shopify_order_id: shipbobResponse.reference_id,\n    created_at: new Date().toISOString(),\n    message: `Order successfully created in ShipBob with ID ${shipbobResponse.id}`\n  }\n}];"
+      },
+      "id": "log-success",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3520, 340]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "talaizenbsc@gmail.com",
+        "subject": "=[n8n ERROR] ShipBob API failed for Order #{{ $('Map to ShipBob Payload').first().json._originalOrder.order_number }}",
+        "text": "=❌ SHIPBOB API ERROR\n\nOrder #{{ $('Map to ShipBob Payload').first().json._originalOrder.order_number }}\nShopify Order ID: {{ $('Map to ShipBob Payload').first().json._originalOrder.id }}\n\nShipBob API Response:\n{{ JSON.stringify($json, null, 2) }}\n\nPayload Sent:\n{{ JSON.stringify($('Map to ShipBob Payload').first().json._shipbobPayload, null, 2) }}\n\nAction Required: Check ShipBob dashboard and retry manually if needed.\nhttps://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/orders/{{ $('Map to ShipBob Payload').first().json._originalOrder.id }}\n\nTimestamp: {{ new Date().toISOString() }}",
+        "options": {}
+      },
+      "id": "email-shipbob-error",
+      "name": "Email ShipBob Error",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [3520, 540],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "talaizenbsc@gmail.com",
+        "subject": "=[n8n CRITICAL] Unhandled error in Order Fulfillment workflow",
+        "text": "=🔴 CRITICAL UNHANDLED ERROR\n\nWorkflow: WF1 - Order Fulfillment\nError: {{ $json.execution?.error?.message || 'Unknown error' }}\nNode: {{ $json.execution?.lastNodeExecuted || 'Unknown' }}\nExecution ID: {{ $json.execution?.id || 'Unknown' }}\nTimestamp: {{ new Date().toISOString() }}\n\nCheck the n8n execution log for full details.",
+        "options": {}
+      },
+      "id": "global-error-handler",
+      "name": "Global Error Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [220, 600],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 600]
+    }
+  ],
+  "connections": {
+    "Shopify Order Paid": {
+      "main": [
+        [{ "node": "Verify HMAC Signature", "type": "main", "index": 0 }]
+      ]
+    },
+    "Verify HMAC Signature": {
+      "main": [
+        [{ "node": "High-Ticket Gate (≥$250)", "type": "main", "index": 0 }]
+      ]
+    },
+    "High-Ticket Gate (≥$250)": {
+      "main": [
+        [
+          { "node": "Tag as High-Ticket", "type": "main", "index": 0 },
+          { "node": "Fraud Check (Local)", "type": "main", "index": 0 }
+        ],
+        [{ "node": "Fraud Check (Local)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Tag as High-Ticket": {
+      "main": [[]]
+    },
+    "Fraud Check (Local)": {
+      "main": [
+        [{ "node": "Velocity Check (Shopify API)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Velocity Check (Shopify API)": {
+      "main": [
+        [{ "node": "Evaluate Velocity", "type": "main", "index": 0 }]
+      ]
+    },
+    "Evaluate Velocity": {
+      "main": [
+        [{ "node": "Fraud Severity = HIGH?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fraud Severity = HIGH?": {
+      "main": [
+        [{ "node": "Tag fraud-review", "type": "main", "index": 0 }],
+        [{ "node": "Fraud Severity = MEDIUM?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Tag fraud-review": {
+      "main": [
+        [{ "node": "Email Fraud Alert", "type": "main", "index": 0 }]
+      ]
+    },
+    "Email Fraud Alert": {
+      "main": [[]]
+    },
+    "Fraud Severity = MEDIUM?": {
+      "main": [
+        [
+          { "node": "Tag fraud-watch", "type": "main", "index": 0 },
+          { "node": "Lob Address Verification", "type": "main", "index": 0 }
+        ],
+        [{ "node": "Lob Address Verification", "type": "main", "index": 0 }]
+      ]
+    },
+    "Tag fraud-watch": {
+      "main": [
+        [{ "node": "Email Fraud Watch", "type": "main", "index": 0 }]
+      ]
+    },
+    "Email Fraud Watch": {
+      "main": [[]]
+    },
+    "Lob Address Verification": {
+      "main": [
+        [{ "node": "Evaluate Address Result", "type": "main", "index": 0 }]
+      ]
+    },
+    "Evaluate Address Result": {
+      "main": [
+        [{ "node": "Address Deliverable?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Address Deliverable?": {
+      "main": [
+        [{ "node": "Map to ShipBob Payload", "type": "main", "index": 0 }],
+        [{ "node": "Email Undeliverable Alert", "type": "main", "index": 0 }]
+      ]
+    },
+    "Email Undeliverable Alert": {
+      "main": [[]]
+    },
+    "Map to ShipBob Payload": {
+      "main": [
+        [{ "node": "ShipBob Create Order", "type": "main", "index": 0 }]
+      ]
+    },
+    "ShipBob Create Order": {
+      "main": [
+        [{ "node": "ShipBob Success?", "type": "main", "index": 0 }]
+      ]
+    },
+    "ShipBob Success?": {
+      "main": [
+        [{ "node": "Log Success", "type": "main", "index": 0 }],
+        [{ "node": "Email ShipBob Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [{ "node": "Global Error Email", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "shopify" },
+    { "name": "shipbob" },
+    { "name": "fulfillment" },
+    { "name": "production" }
+  ],
+  "pinData": {},
+  "versionId": "1"
+}

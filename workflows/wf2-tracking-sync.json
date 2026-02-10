@@ -1,0 +1,412 @@
+{
+  "name": "WF2: ShipBob Tracking → Shopify Fulfillment Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "shipbob-shipment-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "shipbob-webhook",
+      "name": "ShipBob Webhook (Optional)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 520],
+      "notes": "Optional: If your ShipBob plan supports webhooks, point shipment_shipped events to this URL. Otherwise, the cron trigger handles everything."
+    },
+    {
+      "parameters": {
+        "functionCode": "// Determine if this was triggered by cron or webhook\nconst items = $input.all();\nconst item = items[0]?.json || {};\n\n// If webhook triggered, extract shipment data directly\nif (item.event_type === 'shipment_shipped' || item.tracking) {\n  return [{ json: { source: 'webhook', shipments: [item] } }];\n}\n\n// If cron triggered, set flag to fetch from API\nreturn [{ json: { source: 'cron', shipments: [] } }];"
+      },
+      "id": "detect-source",
+      "name": "Detect Trigger Source",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-cron",
+              "leftValue": "={{ $json.source }}",
+              "rightValue": "cron",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-cron-trigger",
+      "name": "Is Cron Trigger?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.shipbob.com/1.0/order",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "shipbob_channel_id",
+              "value": "={{ $env.SHIPBOB_CHANNEL_ID }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "HasTracking",
+              "value": "true"
+            },
+            {
+              "name": "LastUpdateStartDate",
+              "value": "={{ new Date(Date.now() - 30*60*1000).toISOString() }}"
+            },
+            {
+              "name": "Page",
+              "value": "1"
+            },
+            {
+              "name": "Limit",
+              "value": "50"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-shipbob-orders",
+      "name": "Fetch ShipBob Orders with Tracking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SHIPBOB_CREDENTIAL_ID",
+          "name": "ShipBob PAT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// Extract shipments with tracking from ShipBob orders\n// ──────────────────────────────────────────────\nconst response = $input.first().json;\nconst orders = Array.isArray(response) ? response : (response.orders || [response]);\nconst shipments = [];\n\nfor (const order of orders) {\n  if (!order.shipments || order.shipments.length === 0) continue;\n  \n  for (const shipment of order.shipments) {\n    if (!shipment.tracking?.tracking_number) continue;\n    \n    shipments.push({\n      shipbob_order_id: order.id,\n      shopify_order_id: order.reference_id,\n      order_number: order.order_number,\n      tracking_number: shipment.tracking.tracking_number,\n      tracking_url: shipment.tracking.tracking_url || '',\n      carrier: shipment.tracking.carrier || 'Other',\n      status: shipment.status,\n      shipped_date: shipment.created_date\n    });\n  }\n}\n\nif (shipments.length === 0) {\n  return []; // No items to process - workflow stops here cleanly\n}\n\nreturn shipments.map(s => ({ json: s }));"
+      },
+      "id": "extract-shipments",
+      "name": "Extract Shipments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// Process webhook shipment into standard format\n// ──────────────────────────────────────────────\nconst item = $input.first().json;\nconst shipment = item.shipments?.[0] || item;\n\n// Handle ShipBob webhook payload format\nreturn [{\n  json: {\n    shipbob_order_id: shipment.order_id || item.order_id,\n    shopify_order_id: shipment.reference_id || item.reference_id,\n    order_number: shipment.order_number || item.order_number,\n    tracking_number: shipment.tracking?.tracking_number || shipment.tracking_number,\n    tracking_url: shipment.tracking?.tracking_url || shipment.tracking_url || '',\n    carrier: shipment.tracking?.carrier || shipment.carrier || 'Other',\n    status: shipment.status || 'Completed',\n    shipped_date: shipment.created_date || new Date().toISOString()\n  }\n}];"
+      },
+      "id": "process-webhook-shipment",
+      "name": "Process Webhook Shipment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 420]
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// Merge: both paths converge here with standardized shipment data\n// ──────────────────────────────────────────────\nreturn $input.all();"
+      },
+      "id": "merge-shipments",
+      "name": "Merge Shipments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/api/2024-01/orders/{{ $json.shopify_order_id }}.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,fulfillments,fulfillment_status,line_items,name"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "check-shopify-fulfillment",
+      "name": "Check Shopify Fulfillment Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 300],
+      "credentials": {
+        "shopifyApi": {
+          "id": "SHOPIFY_CREDENTIAL_ID",
+          "name": "Shopify Admin API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "functionCode": "// ──────────────────────────────────────────────\n// Check if this order already has a fulfillment with this tracking number\n// Skip if already fulfilled to prevent duplicates\n// ──────────────────────────────────────────────\nconst shipment = $('Merge Shipments').first().json;\nconst shopifyData = $input.first().json;\nconst order = shopifyData.order || shopifyData;\n\n// Check if already fulfilled with this tracking number\nconst existingFulfillments = order.fulfillments || [];\nconst alreadyFulfilled = existingFulfillments.some(f => \n  f.tracking_numbers?.includes(shipment.tracking_number)\n);\n\nif (alreadyFulfilled) {\n  return []; // Skip - already synced\n}\n\n// Get line item IDs for fulfillment\nconst lineItemIds = (order.line_items || []).map(li => li.id);\n\n// Map ShipBob carrier names to Shopify carrier names\nconst carrierMap = {\n  'USPS': 'USPS',\n  'UPS': 'UPS',\n  'FedEx': 'FedEx',\n  'DHL': 'DHL Express',\n  'DHL eCommerce': 'DHL eCommerce',\n  'OnTrac': 'OnTrac',\n  'LSO': 'LSO'\n};\nconst shopifyCarrier = carrierMap[shipment.carrier] || shipment.carrier;\n\nreturn [{\n  json: {\n    shopify_order_id: order.id,\n    order_name: order.name,\n    tracking_number: shipment.tracking_number,\n    tracking_url: shipment.tracking_url,\n    carrier: shopifyCarrier,\n    line_item_ids: lineItemIds,\n    shipbob_order_id: shipment.shipbob_order_id\n  }\n}];"
+      },
+      "id": "check-duplicate",
+      "name": "Skip if Already Fulfilled",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/api/2024-01/orders/{{ $json.shopify_order_id }}/fulfillments.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fulfillment: { location_id: $env.SHOPIFY_LOCATION_ID, tracking_number: $json.tracking_number, tracking_urls: [$json.tracking_url], tracking_company: $json.carrier, line_items: $json.line_item_ids.map(id => ({ id })), notify_customer: true } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "create-shopify-fulfillment",
+      "name": "Create Shopify Fulfillment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 300],
+      "credentials": {
+        "shopifyApi": {
+          "id": "SHOPIFY_CREDENTIAL_ID",
+          "name": "Shopify Admin API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "fulfillment-success",
+              "leftValue": "={{ $json.fulfillment?.id ? true : false }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fulfillment-success-check",
+      "name": "Fulfillment Created?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1980, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log successful tracking sync\nconst fulfillment = $input.first().json.fulfillment;\nconst shipmentData = $('Skip if Already Fulfilled').first().json;\n\nreturn [{\n  json: {\n    status: 'SYNCED',\n    shopify_order: shipmentData.order_name,\n    tracking_number: shipmentData.tracking_number,\n    carrier: shipmentData.carrier,\n    fulfillment_id: fulfillment?.id,\n    synced_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "log-sync-success",
+      "name": "Log Sync Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 200]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "talaizenbsc@gmail.com",
+        "subject": "=[n8n ERROR] Tracking sync failed for order {{ $('Skip if Already Fulfilled').first().json.order_name }}",
+        "text": "=❌ TRACKING SYNC FAILED\n\nShopify Order: {{ $('Skip if Already Fulfilled').first().json.order_name }}\nShopify Order ID: {{ $('Skip if Already Fulfilled').first().json.shopify_order_id }}\nShipBob Order ID: {{ $('Skip if Already Fulfilled').first().json.shipbob_order_id }}\nTracking: {{ $('Skip if Already Fulfilled').first().json.tracking_number }} ({{ $('Skip if Already Fulfilled').first().json.carrier }})\n\nShopify API Response:\n{{ JSON.stringify($json, null, 2) }}\n\nAction Required: Manually add tracking in Shopify admin.\nhttps://{{ $env.SHOPIFY_STORE }}.myshopify.com/admin/orders/{{ $('Skip if Already Fulfilled').first().json.shopify_order_id }}\n\nTimestamp: {{ new Date().toISOString() }}",
+        "options": {}
+      },
+      "id": "email-sync-error",
+      "name": "Email Sync Error",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [2200, 420],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'received', timestamp: new Date().toISOString() }) }}",
+        "options": {}
+      },
+      "id": "webhook-respond",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [220, 520]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "talaizenbsc@gmail.com",
+        "subject": "=[n8n CRITICAL] Unhandled error in Tracking Sync workflow",
+        "text": "=🔴 CRITICAL UNHANDLED ERROR\n\nWorkflow: WF2 - Tracking Sync\nError: {{ $json.execution?.error?.message || 'Unknown error' }}\nNode: {{ $json.execution?.lastNodeExecuted || 'Unknown' }}\nExecution ID: {{ $json.execution?.id || 'Unknown' }}\nTimestamp: {{ new Date().toISOString() }}\n\nCheck the n8n execution log for full details.",
+        "options": {}
+      },
+      "id": "global-error-handler",
+      "name": "Global Error Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [220, 720],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 720]
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [{ "node": "Detect Trigger Source", "type": "main", "index": 0 }]
+      ]
+    },
+    "ShipBob Webhook (Optional)": {
+      "main": [
+        [
+          { "node": "Respond OK", "type": "main", "index": 0 },
+          { "node": "Detect Trigger Source", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Detect Trigger Source": {
+      "main": [
+        [{ "node": "Is Cron Trigger?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Cron Trigger?": {
+      "main": [
+        [{ "node": "Fetch ShipBob Orders with Tracking", "type": "main", "index": 0 }],
+        [{ "node": "Process Webhook Shipment", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch ShipBob Orders with Tracking": {
+      "main": [
+        [{ "node": "Extract Shipments", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Shipments": {
+      "main": [
+        [{ "node": "Merge Shipments", "type": "main", "index": 0 }]
+      ]
+    },
+    "Process Webhook Shipment": {
+      "main": [
+        [{ "node": "Merge Shipments", "type": "main", "index": 0 }]
+      ]
+    },
+    "Merge Shipments": {
+      "main": [
+        [{ "node": "Check Shopify Fulfillment Status", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Shopify Fulfillment Status": {
+      "main": [
+        [{ "node": "Skip if Already Fulfilled", "type": "main", "index": 0 }]
+      ]
+    },
+    "Skip if Already Fulfilled": {
+      "main": [
+        [{ "node": "Create Shopify Fulfillment", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Shopify Fulfillment": {
+      "main": [
+        [{ "node": "Fulfillment Created?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fulfillment Created?": {
+      "main": [
+        [{ "node": "Log Sync Success", "type": "main", "index": 0 }],
+        [{ "node": "Email Sync Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [{ "node": "Global Error Email", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "shopify" },
+    { "name": "shipbob" },
+    { "name": "tracking" },
+    { "name": "production" }
+  ],
+  "pinData": {},
+  "versionId": "1"
+}

@@ -184,7 +184,7 @@ that diverges meaningfully from raw market noise.
 - [x] Phase 1: Foundation (directory structure, configs, layout shell)
 - [x] Phase 1.5: Muted Luxury palette applied
 - [x] Phase 2: CLAUDE.md + algorithm decision (Option C chosen)
-- [ ] Phase 3: Chart component + core lib files ← **YOU ARE HERE**
-- [ ] Phase 4: Polymarket API integration (`src/lib/polymarket.ts`)
-- [ ] Phase 5: News Impact feed
-- [ ] Phase 6: Polish, responsive design, edge cases
+- [x] Phase 3: Chart component + core lib files
+- [x] Phase 4: Polymarket API integration (`src/lib/polymarket.ts`)
+- [x] Phase 5: News Impact feed
+- [x] Phase 6: Polish, responsive design, edge cases

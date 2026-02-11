@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-charcoal-950: #0a0a0f;
+    --color-charcoal-900: #0d0d14;
+    --color-charcoal-800: #15151f;
+    --color-charcoal-700: #1f1f2e;
+    --color-emerald-500: #10b981;
+    --color-electric-500: #3b82f6;
+    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-bg: rgba(255, 255, 255, 0.02);
+  }
+
+  * {
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-charcoal-950);
+    color: rgba(255, 255, 255, 0.87);
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+      Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+}
+
+@layer components {
+  /* Glass card — the core building block */
+  .glass-card {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(255, 255, 255, 0.01) 100%
+    );
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .glass-card:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  /* Glass card — subtle variation */
+  .glass-card-inset {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 12px;
+  }
+
+  /* Emerald accent glow behind elements */
+  .glow-emerald {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+  }
+
+  /* Electric blue accent glow */
+  .glow-electric {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+  }
+
+  /* Subtle text hierarchy */
+  .text-primary {
+    color: rgba(255, 255, 255, 0.87);
+  }
+
+  .text-secondary {
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .text-tertiary {
+    color: rgba(255, 255, 255, 0.34);
+  }
+
+  /* Ambient background orbs */
+  .ambient-orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+    z-index: 0;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const GAMMA_API = "https://gamma-api.polymarket.com";
+const CLOB_API = "https://clob.polymarket.com";
+
+/** Paths that live on the CLOB API instead of the Gamma API */
+const CLOB_PATHS = ["/prices-history", "/time-series"];
 
 /**
- * Proxy requests to Polymarket Gamma API to avoid CORS restrictions.
+ * Proxy requests to Polymarket APIs to avoid CORS restrictions.
+ * Routes price-history requests to the CLOB API; everything else to Gamma.
  * Usage: /api/polymarket?path=/events&limit=20&active=true
  */
 export async function GET(req: NextRequest) {
@@ -17,15 +22,16 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Build the upstream URL — forward all query params except "path"
-  const upstream = new URL(path, GAMMA_API);
+  // Route to the correct upstream API based on path
+  const base = CLOB_PATHS.includes(path) ? CLOB_API : GAMMA_API;
+  const upstream = new URL(path, base);
   searchParams.forEach((value, key) => {
     if (key !== "path") upstream.searchParams.set(key, value);
   });
 
   try {
     const upstreamUrl = upstream.toString();
-    console.log("[Gamma proxy]", upstreamUrl);
+    console.log("[Polymarket proxy]", upstreamUrl);
 
     const res = await fetch(upstreamUrl, {
       headers: { Accept: "application/json" },
@@ -34,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      console.error("[Gamma proxy] upstream error", res.status, body.slice(0, 200));
+      console.error("[Polymarket proxy] upstream error", res.status, body.slice(0, 200));
       return NextResponse.json(
         { error: `Gamma API returned ${res.status}` },
         { status: res.status },

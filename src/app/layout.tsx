@@ -14,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-charcoal-950 text-white antialiased">
+      <body suppressHydrationWarning className="min-h-screen bg-charcoal-950 text-white antialiased">
         {/* Ambient background glow orbs */}
         <div
           className="ambient-orb"

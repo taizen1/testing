@@ -91,14 +91,17 @@ export function toEventSummaries(
 
 /**
  * Extract the first CLOB token ID from an event (for price history).
+ *
+ * clobTokenIds is a JSON-encoded array whose elements are very large integers
+ * (76+ digits) that exceed Number.MAX_SAFE_INTEGER.  Using JSON.parse would
+ * silently corrupt them (e.g. "2.17e+76"), so we extract the raw digit
+ * strings directly instead.
  */
 export function extractClobTokenId(event: PolymarketEvent): string | null {
   const market = event.markets[0];
   if (!market?.clobTokenIds) return null;
-  try {
-    const ids = JSON.parse(market.clobTokenIds) as string[];
-    return ids[0] ?? null;
-  } catch {
-    return market.clobTokenIds;
-  }
+
+  // Match sequences of digits (token IDs are large unsigned integers)
+  const matches = market.clobTokenIds.match(/\d+/g);
+  return matches?.[0] ?? null;
 }

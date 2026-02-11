@@ -33,9 +33,9 @@ export default function Home() {
             {/* Chart placeholder */}
             <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-white/8 bg-white/[0.01]">
               <div className="text-center">
-                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/15">
+                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-sage-400/10 border border-sage-400/15">
                   <svg
-                    className="h-5 w-5 text-emerald-400/60"
+                    className="h-5 w-5 text-sage-400/60"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -60,11 +60,11 @@ export default function Home() {
             {/* Legend placeholders */}
             <div className="mt-4 flex items-center gap-6 text-xs">
               <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-emerald-400" />
+                <div className="h-2 w-2 rounded-full bg-sage-400" />
                 <span className="text-white/50">Market Crowd</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-electric-400" />
+                <div className="h-2 w-2 rounded-full bg-periwinkle-400" />
                 <span className="text-white/50">Superforecaster</span>
               </div>
               <div className="flex items-center gap-2">
@@ -83,7 +83,7 @@ export default function Home() {
               Brier Score
             </h3>
             <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-semibold text-emerald-400">
+              <span className="text-3xl font-semibold text-sage-400">
                 --
               </span>
               <span className="text-xs text-white/30">/ 1.00</span>

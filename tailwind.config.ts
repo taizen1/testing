@@ -9,43 +9,45 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Deep charcoal palette
+        // Pure dark palette — muted luxury
         charcoal: {
-          950: "#0a0a0f",
-          900: "#0d0d14",
-          850: "#111119",
-          800: "#15151f",
-          750: "#1a1a26",
-          700: "#1f1f2e",
-          600: "#2a2a3d",
-          500: "#3a3a52",
+          950: "#09090b",
+          900: "#0c0c0f",
+          850: "#101013",
+          800: "#141418",
+          750: "#19191e",
+          700: "#1e1e24",
+          600: "#28282f",
+          500: "#35353e",
         },
-        // Emerald accent
-        emerald: {
-          400: "#34d399",
-          500: "#10b981",
-          600: "#059669",
+        // Desaturated sage accent (Market Crowd)
+        sage: {
+          300: "#a7f3d0",
+          400: "#6ee7b7",
+          500: "#4ade80",
+          600: "#34d399",
         },
-        // Electric blue accent
-        electric: {
-          400: "#60a5fa",
-          500: "#3b82f6",
-          600: "#2563eb",
+        // Soft periwinkle accent (Superforecaster)
+        periwinkle: {
+          300: "#a5b4fc",
+          400: "#818cf8",
+          500: "#6366f1",
+          600: "#4f46e5",
         },
       },
       backgroundImage: {
         "glass-gradient":
           "linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)",
-        "glow-emerald":
-          "radial-gradient(ellipse at center, rgba(16,185,129,0.15) 0%, transparent 70%)",
-        "glow-electric":
-          "radial-gradient(ellipse at center, rgba(59,130,246,0.15) 0%, transparent 70%)",
+        "glow-sage":
+          "radial-gradient(ellipse at center, rgba(110,231,183,0.12) 0%, transparent 70%)",
+        "glow-periwinkle":
+          "radial-gradient(ellipse at center, rgba(129,140,248,0.12) 0%, transparent 70%)",
       },
       boxShadow: {
-        glass: "0 8px 32px rgba(0, 0, 0, 0.3)",
-        "glass-sm": "0 4px 16px rgba(0, 0, 0, 0.2)",
-        "glow-emerald": "0 0 20px rgba(16, 185, 129, 0.2)",
-        "glow-electric": "0 0 20px rgba(59, 130, 246, 0.2)",
+        glass: "0 8px 32px rgba(0, 0, 0, 0.35)",
+        "glass-sm": "0 4px 16px rgba(0, 0, 0, 0.25)",
+        "glow-sage": "0 0 24px rgba(110, 231, 183, 0.15)",
+        "glow-periwinkle": "0 0 24px rgba(129, 140, 248, 0.15)",
       },
       borderColor: {
         glass: "rgba(255, 255, 255, 0.06)",

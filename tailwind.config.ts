@@ -37,7 +37,7 @@ const config: Config = {
       },
       backgroundImage: {
         "glass-gradient":
-          "linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)",
+          "linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.04) 100%)",
         "glow-sage":
           "radial-gradient(ellipse at center, rgba(110,231,183,0.12) 0%, transparent 70%)",
         "glow-periwinkle":
@@ -50,8 +50,8 @@ const config: Config = {
         "glow-periwinkle": "0 0 24px rgba(129, 140, 248, 0.15)",
       },
       borderColor: {
-        glass: "rgba(255, 255, 255, 0.06)",
-        "glass-hover": "rgba(255, 255, 255, 0.12)",
+        glass: "rgba(255, 255, 255, 0.12)",
+        "glass-hover": "rgba(255, 255, 255, 0.20)",
       },
       backdropBlur: {
         glass: "16px",

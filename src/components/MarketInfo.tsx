@@ -56,13 +56,13 @@ export default function MarketInfo({ event }: MarketInfoProps) {
 
   return (
     <div className="glass-card p-5">
-      <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">
+      <h3 className="text-xs font-medium text-white/65 uppercase tracking-wider">
         Market Info
       </h3>
       <div className="mt-3 space-y-3">
         {rows.map((row) => (
           <div key={row.label} className="flex justify-between text-xs">
-            <span className="text-white/35">{row.label}</span>
+            <span className="text-white/60">{row.label}</span>
             <span className="text-white/60">{row.value}</span>
           </div>
         ))}

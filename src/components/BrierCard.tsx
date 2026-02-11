@@ -13,7 +13,7 @@ function ScoreBar({ label, score, color }: { label: string; score: number; color
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-[11px]">
-        <span className="text-white/35">{label}</span>
+        <span className="text-white/60">{label}</span>
         <span className="text-white/60 font-medium">{score.toFixed(4)}</span>
       </div>
       <div className="h-1 rounded-full bg-white/5 overflow-hidden">
@@ -35,7 +35,7 @@ export default function BrierCard({ result }: BrierCardProps) {
 
   return (
     <div className="glass-card p-5">
-      <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">
+      <h3 className="text-xs font-medium text-white/65 uppercase tracking-wider">
         Brier Score
       </h3>
 
@@ -45,9 +45,9 @@ export default function BrierCard({ result }: BrierCardProps) {
             <span className={`text-3xl font-semibold ${expertWins ? "text-sage-400" : "text-periwinkle-400"}`}>
               {result.expertScore.toFixed(4)}
             </span>
-            <span className="text-xs text-white/30">/ 1.00</span>
+            <span className="text-xs text-white/55">/ 1.00</span>
           </div>
-          <p className="mt-1 text-[10px] text-white/20">
+          <p className="mt-1 text-[10px] text-white/45">
             Expert {expertWins ? "outperforms" : "trails"} market ({result.sampleSize} samples)
           </p>
 
@@ -60,9 +60,9 @@ export default function BrierCard({ result }: BrierCardProps) {
         <>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-semibold text-sage-400">--</span>
-            <span className="text-xs text-white/30">/ 1.00</span>
+            <span className="text-xs text-white/55">/ 1.00</span>
           </div>
-          <p className="mt-2 text-[11px] text-white/25">
+          <p className="mt-2 text-[11px] text-white/50">
             Lower is better. Measures calibration accuracy.
           </p>
         </>

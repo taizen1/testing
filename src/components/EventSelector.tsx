@@ -50,7 +50,7 @@ export default function EventSelector({
         onClick={() => setOpen(!open)}
         className="glass-card-inset flex w-full items-center justify-between gap-2 px-3 py-2 text-xs transition-colors hover:border-white/10"
       >
-        <span className={selected ? "text-white/70" : "text-white/35"}>
+        <span className={selected ? "text-white/70" : "text-white/60"}>
           {loading
             ? "Loading events..."
             : selected
@@ -58,7 +58,7 @@ export default function EventSelector({
               : "Select an event..."}
         </span>
         <ChevronDown
-          className={`h-3.5 w-3.5 text-white/30 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-3.5 w-3.5 text-white/55 transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
 
@@ -73,13 +73,13 @@ export default function EventSelector({
           >
             {/* Search */}
             <div className="flex items-center gap-2 border-b border-white/6 px-3 py-2">
-              <Search className="h-3.5 w-3.5 text-white/25" />
+              <Search className="h-3.5 w-3.5 text-white/50" />
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search events..."
-                className="flex-1 bg-transparent text-xs text-white/70 placeholder:text-white/20 outline-none"
+                className="flex-1 bg-transparent text-xs text-white/70 placeholder:text-white/45 outline-none"
                 autoFocus
               />
             </div>
@@ -87,7 +87,7 @@ export default function EventSelector({
             {/* Event list */}
             <div className="max-h-64 overflow-y-auto py-1">
               {filtered.length === 0 ? (
-                <p className="px-3 py-4 text-center text-xs text-white/20">
+                <p className="px-3 py-4 text-center text-xs text-white/45">
                   No events found
                 </p>
               ) : (
@@ -108,7 +108,7 @@ export default function EventSelector({
                       <p className="text-xs text-white/70 truncate">
                         {event.title}
                       </p>
-                      <div className="mt-1 flex items-center gap-3 text-[10px] text-white/30">
+                      <div className="mt-1 flex items-center gap-3 text-[10px] text-white/55">
                         <span>{formatVolume(event.volume)} vol</span>
                         <span>
                           {(event.currentPrice * 100).toFixed(0)}% YES

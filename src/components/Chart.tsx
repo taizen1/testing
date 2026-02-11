@@ -31,14 +31,14 @@ function CustomTooltip({
 
   return (
     <div className="glass-card p-3 text-xs !border-white/10">
-      <p className="text-white/50 mb-2">{label}</p>
+      <p className="text-white/70 mb-2">{label}</p>
       {payload.map((entry) => (
         <div key={entry.dataKey} className="flex items-center gap-2 mb-1">
           <div
             className="h-2 w-2 rounded-full"
             style={{ backgroundColor: entry.color }}
           />
-          <span className="text-white/40 capitalize">{entry.dataKey}:</span>
+          <span className="text-white/60 capitalize">{entry.dataKey}:</span>
           <span className="text-white/80 font-medium">
             {(entry.value * 100).toFixed(1)}%
           </span>
@@ -54,7 +54,7 @@ export default function Chart({ data, loading }: ChartProps) {
       <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-white/8 bg-white/[0.01]">
         <div className="flex items-center gap-3">
           <div className="h-4 w-4 rounded-full border-2 border-sage-400/30 border-t-sage-400 animate-spin" />
-          <span className="text-xs text-white/30">Loading price history...</span>
+          <span className="text-xs text-white/55">Loading price history...</span>
         </div>
       </div>
     );
@@ -79,7 +79,7 @@ export default function Chart({ data, loading }: ChartProps) {
               />
             </svg>
           </div>
-          <p className="text-xs text-white/30">
+          <p className="text-xs text-white/55">
             Select an event to see Market vs. Superforecaster
           </p>
         </div>
@@ -112,14 +112,14 @@ export default function Chart({ data, loading }: ChartProps) {
 
           <CartesianGrid
             strokeDasharray="3 3"
-            stroke="rgba(255,255,255,0.04)"
+            stroke="rgba(255,255,255,0.08)"
             vertical={false}
           />
 
           <XAxis
             dataKey="date"
-            tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 10 }}
-            axisLine={{ stroke: "rgba(255,255,255,0.06)" }}
+            tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 10 }}
+            axisLine={{ stroke: "rgba(255,255,255,0.10)" }}
             tickLine={false}
             interval="preserveStartEnd"
           />
@@ -128,7 +128,7 @@ export default function Chart({ data, loading }: ChartProps) {
             domain={[0, 1]}
             ticks={[0, 0.25, 0.5, 0.75, 1]}
             tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`}
-            tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 10 }}
+            tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 10 }}
             axisLine={false}
             tickLine={false}
           />
@@ -137,7 +137,7 @@ export default function Chart({ data, loading }: ChartProps) {
 
           <ReferenceLine
             y={0.5}
-            stroke="rgba(255,255,255,0.06)"
+            stroke="rgba(255,255,255,0.10)"
             strokeDasharray="6 4"
           />
 

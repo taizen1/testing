@@ -11,7 +11,7 @@ interface NewsFeedProps {
 const impactConfig = {
   positive: { icon: ArrowUpRight, color: "text-sage-400", bg: "bg-sage-400/10" },
   negative: { icon: ArrowDownRight, color: "text-red-400", bg: "bg-red-400/10" },
-  neutral: { icon: Minus, color: "text-white/40", bg: "bg-white/5" },
+  neutral: { icon: Minus, color: "text-white/60", bg: "bg-white/5" },
 } as const;
 
 function formatTime(ts: number): string {
@@ -32,12 +32,12 @@ export default function NewsFeed({ items }: NewsFeedProps) {
           <h2 className="text-sm font-medium text-white/80">
             News Impact Feed
           </h2>
-          <span className="text-[10px] text-white/25 uppercase tracking-wider">
+          <span className="text-[10px] text-white/50 uppercase tracking-wider">
             Coming soon
           </span>
         </div>
         <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-white/8 bg-white/[0.01]">
-          <p className="text-xs text-white/20">
+          <p className="text-xs text-white/45">
             Real-time news events that may shift expert predictions
           </p>
         </div>
@@ -51,7 +51,7 @@ export default function NewsFeed({ items }: NewsFeedProps) {
         <h2 className="text-sm font-medium text-white/80">
           News Impact Feed
         </h2>
-        <span className="text-[10px] text-white/25">
+        <span className="text-[10px] text-white/50">
           {items.length} events
         </span>
       </div>
@@ -76,7 +76,7 @@ export default function NewsFeed({ items }: NewsFeedProps) {
                 <p className="text-xs text-white/70 leading-relaxed">
                   {item.title}
                 </p>
-                <div className="mt-1 flex items-center gap-2 text-[10px] text-white/25">
+                <div className="mt-1 flex items-center gap-2 text-[10px] text-white/50">
                   <span>{item.source}</span>
                   <span>&middot;</span>
                   <span>{formatTime(item.timestamp)}</span>

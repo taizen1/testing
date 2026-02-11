@@ -12,7 +12,7 @@ import {
   fetchEvent,
   fetchPriceHistory,
   toEventSummaries,
-  extractMarketId,
+  extractClobTokenId,
 } from "@/lib/polymarket";
 import { generateExpertLine, computeBrierScore } from "@/lib/superforecaster";
 import { generateMockNews } from "@/lib/news";
@@ -65,14 +65,14 @@ export default function Home() {
       const detail = await fetchEvent(event.id);
       setEventDetail(detail);
 
-      const marketId = extractMarketId(detail);
-      if (!marketId) {
+      const tokenId = extractClobTokenId(detail);
+      if (!tokenId) {
         setError("This event has no price data available.");
         setLoadingChart(false);
         return;
       }
 
-      const history = await fetchPriceHistory(marketId);
+      const history = await fetchPriceHistory(tokenId);
 
       if (!history || history.length === 0) {
         setError("No price history found for this event.");
@@ -110,7 +110,7 @@ export default function Home() {
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
           Dashboard
         </h1>
-        <p className="mt-1 text-xs text-white/40 sm:text-sm">
+        <p className="mt-1 text-xs text-white/60 sm:text-sm">
           Compare market crowd sentiment against expert superforecaster
           predictions.
         </p>
@@ -132,7 +132,7 @@ export default function Home() {
                 <h2 className="text-sm font-medium text-white/80">
                   Event Tracker
                 </h2>
-                <p className="text-xs text-white/30 mt-0.5">
+                <p className="text-xs text-white/55 mt-0.5">
                   Select a Polymarket event to begin analysis
                 </p>
               </div>
@@ -153,11 +153,11 @@ export default function Home() {
             <div className="mt-3 flex items-center gap-4 text-xs sm:mt-4 sm:gap-6">
               <div className="flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-sage-400" />
-                <span className="text-white/50">Market Crowd</span>
+                <span className="text-white/70">Market Crowd</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-periwinkle-400" />
-                <span className="text-white/50">Superforecaster</span>
+                <span className="text-white/70">Superforecaster</span>
               </div>
             </div>
           </div>
@@ -170,10 +170,10 @@ export default function Home() {
 
           {/* Expert methodology card — hidden on small screens, shown lg+ */}
           <div className="glass-card p-4 col-span-2 sm:p-5 lg:col-span-1">
-            <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">
+            <h3 className="text-xs font-medium text-white/60 uppercase tracking-wider">
               Expert Method
             </h3>
-            <p className="mt-2 text-[11px] text-white/25 leading-relaxed">
+            <p className="mt-2 text-[11px] text-white/70 leading-relaxed">
               Time-Decay Smoothing with Extremization. Exponential smoothing
               (&beta;=0.12) filters market noise, then time-varying extremization
               pushes predictions toward 0/1 as the event approaches resolution.

@@ -61,12 +61,12 @@ export default function RootLayout({
 
               {/* Right nav actions (placeholder) */}
               <nav className="flex items-center gap-4">
-                <span className="text-xs text-white/40">
+                <span className="text-xs text-white/60">
                   Polymarket Gamma API
                 </span>
                 <div className="h-4 w-px bg-white/10" />
                 <div className="h-2 w-2 rounded-full bg-sage-400 animate-pulse-slow" />
-                <span className="text-xs text-white/50">Live</span>
+                <span className="text-xs text-white/70">Live</span>
               </nav>
             </div>
           </div>

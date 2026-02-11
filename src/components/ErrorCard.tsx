@@ -23,13 +23,13 @@ export default function ErrorCard({ message, onRetry }: ErrorCardProps) {
           <p className="text-xs font-medium text-white/60">
             Something went wrong
           </p>
-          <p className="mt-1 text-[11px] text-white/30 leading-relaxed">
+          <p className="mt-1 text-[11px] text-white/55 leading-relaxed">
             {message}
           </p>
           {onRetry && (
             <button
               onClick={onRetry}
-              className="mt-3 flex items-center gap-1.5 rounded-md bg-white/5 px-3 py-1.5 text-[11px] text-white/50 transition-colors hover:bg-white/8 hover:text-white/70"
+              className="mt-3 flex items-center gap-1.5 rounded-md bg-white/5 px-3 py-1.5 text-[11px] text-white/70 transition-colors hover:bg-white/8 hover:text-white/70"
             >
               <RefreshCw className="h-3 w-3" />
               Retry

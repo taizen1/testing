@@ -39,11 +39,16 @@ export default function Home() {
   const loadEvents = useCallback(() => {
     setLoadingEvents(true);
     setError(null);
+    console.log("[dashboard] Loading events...");
     fetchEvents(30)
-      .then((data) => setEvents(toEventSummaries(data)))
+      .then((data) => {
+        const summaries = toEventSummaries(data);
+        console.log(`[dashboard] ✓ ${summaries.length} events ready (from ${data.length} raw)`);
+        setEvents(summaries);
+      })
       .catch((err) => {
-        console.error("Failed to fetch events:", err);
-        setError("Could not load events from Polymarket. Check your connection and try again.");
+        console.error("[dashboard] ✗ Failed to fetch events:", err);
+        setError(`Could not load events from Polymarket: ${err.message}`);
       })
       .finally(() => setLoadingEvents(false));
   }, []);
@@ -62,20 +67,25 @@ export default function Home() {
     setError(null);
 
     try {
+      console.log(`[dashboard] Selected: "${event.title}" (id=${event.id})`);
+
       const detail = await fetchEvent(event.id);
       setEventDetail(detail);
+      console.log(`[dashboard] Event detail loaded, ${detail.markets?.length ?? 0} markets`);
 
       const tokenId = extractClobTokenId(detail);
       if (!tokenId) {
-        setError("This event has no price data available.");
+        setError("This event has no CLOB token ID — price data unavailable.");
         setLoadingChart(false);
         return;
       }
+      console.log(`[dashboard] CLOB token: ${tokenId.slice(0, 20)}...`);
 
       const history = await fetchPriceHistory(tokenId);
+      console.log(`[dashboard] Price history: ${history.length} points`);
 
       if (!history || history.length === 0) {
-        setError("No price history found for this event.");
+        setError("No price history available for this market. It may be too new or already resolved.");
         setLoadingChart(false);
         return;
       }
@@ -89,15 +99,18 @@ export default function Home() {
 
       const data = generateExpertLine(history, startTime, endTime);
       setChartData(data);
+      console.log(`[dashboard] ✓ Chart data generated: ${data.length} points`);
 
       const brier = computeBrierScore(data);
       setBrierResult(brier);
+      console.log(`[dashboard] ✓ Brier scores: market=${brier.marketScore} expert=${brier.expertScore}`);
 
       // Generate contextual mock news
       setNewsItems(generateMockNews(event.title, event.currentPrice));
     } catch (err) {
-      console.error("Failed to load event data:", err);
-      setError("Failed to load event data. The Polymarket API may be temporarily unavailable.");
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[dashboard] ✗ Failed to load event data:", message);
+      setError(`Failed to load event data: ${message}`);
     } finally {
       setLoadingChart(false);
     }

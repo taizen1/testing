@@ -40,19 +40,33 @@ export async function fetchEvent(id: string): Promise<PolymarketEvent> {
 
 /**
  * Fetch price history for a specific market (CLOB token).
+ * Tries /prices-history first, falls back to /time-series.
  */
 export async function fetchPriceHistory(
   clobTokenId: string,
   fidelity = 60,
 ): Promise<PricePoint[]> {
-  const params = new URLSearchParams({
-    path: "/prices/history",
+  // Attempt 1: /prices-history
+  const params1 = new URLSearchParams({
+    path: "/prices-history",
     market: clobTokenId,
     interval: "max",
     fidelity: String(fidelity),
   });
 
-  const res = await fetch(`${PROXY}?${params}`);
+  let res = await fetch(`${PROXY}?${params1}`);
+
+  // Attempt 2: /time-series if first failed
+  if (!res.ok) {
+    const params2 = new URLSearchParams({
+      path: "/time-series",
+      market: clobTokenId,
+      interval: "max",
+      fidelity: String(fidelity),
+    });
+    res = await fetch(`${PROXY}?${params2}`);
+  }
+
   if (!res.ok) throw new Error(`API error: ${res.status}`);
 
   const data = await res.json();

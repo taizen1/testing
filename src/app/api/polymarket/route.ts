@@ -24,12 +24,17 @@ export async function GET(req: NextRequest) {
   });
 
   try {
-    const res = await fetch(upstream.toString(), {
+    const upstreamUrl = upstream.toString();
+    console.log("[Gamma proxy]", upstreamUrl);
+
+    const res = await fetch(upstreamUrl, {
       headers: { Accept: "application/json" },
       next: { revalidate: 30 }, // cache for 30s on the server
     });
 
     if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("[Gamma proxy] upstream error", res.status, body.slice(0, 200));
       return NextResponse.json(
         { error: `Gamma API returned ${res.status}` },
         { status: res.status },

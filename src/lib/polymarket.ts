@@ -39,18 +39,14 @@ export async function fetchEvent(id: string): Promise<PolymarketEvent> {
 }
 
 /**
- * Fetch price history for a specific market (CLOB token).
- * Uses the CLOB API /prices-history endpoint (proxy routes automatically).
+ * Fetch price history for a market via the Gamma API.
+ * Endpoint: /markets/{marketId}/prices/history
  */
 export async function fetchPriceHistory(
-  clobTokenId: string,
-  fidelity = 60,
+  marketId: string,
 ): Promise<PricePoint[]> {
   const params = new URLSearchParams({
-    path: "/prices-history",
-    market: clobTokenId,
-    interval: "max",
-    fidelity: String(fidelity),
+    path: `/markets/${marketId}/prices/history`,
   });
 
   const res = await fetch(`${PROXY}?${params}`);
@@ -90,18 +86,8 @@ export function toEventSummaries(
 }
 
 /**
- * Extract the first CLOB token ID from an event (for price history).
- *
- * clobTokenIds is a JSON-encoded array whose elements are very large integers
- * (76+ digits) that exceed Number.MAX_SAFE_INTEGER.  Using JSON.parse would
- * silently corrupt them (e.g. "2.17e+76"), so we extract the raw digit
- * strings directly instead.
+ * Extract the first market ID from an event (for price history).
  */
-export function extractClobTokenId(event: PolymarketEvent): string | null {
-  const market = event.markets[0];
-  if (!market?.clobTokenIds) return null;
-
-  // Match sequences of digits (token IDs are large unsigned integers)
-  const matches = market.clobTokenIds.match(/\d+/g);
-  return matches?.[0] ?? null;
+export function extractMarketId(event: PolymarketEvent): string | null {
+  return event.markets[0]?.id ?? null;
 }

@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const GAMMA_API = "https://gamma-api.polymarket.com";
-const CLOB_API = "https://clob.polymarket.com";
-
-/** Paths that live on the CLOB API instead of the Gamma API */
-const CLOB_PATHS = ["/prices-history", "/time-series"];
 
 /**
- * Proxy requests to Polymarket APIs to avoid CORS restrictions.
- * Routes price-history requests to the CLOB API; everything else to Gamma.
+ * Proxy requests to Polymarket Gamma API to avoid CORS restrictions.
  * Usage: /api/polymarket?path=/events&limit=20&active=true
  */
 export async function GET(req: NextRequest) {
@@ -22,9 +17,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Route to the correct upstream API based on path
-  const base = CLOB_PATHS.includes(path) ? CLOB_API : GAMMA_API;
-  const upstream = new URL(path, base);
+  // Build the upstream URL — forward all query params except "path"
+  const upstream = new URL(path, GAMMA_API);
   searchParams.forEach((value, key) => {
     if (key !== "path") upstream.searchParams.set(key, value);
   });

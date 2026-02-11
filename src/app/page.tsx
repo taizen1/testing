@@ -12,7 +12,7 @@ import {
   fetchEvent,
   fetchPriceHistory,
   toEventSummaries,
-  extractClobTokenId,
+  extractMarketId,
 } from "@/lib/polymarket";
 import { generateExpertLine, computeBrierScore } from "@/lib/superforecaster";
 import { generateMockNews } from "@/lib/news";
@@ -65,14 +65,14 @@ export default function Home() {
       const detail = await fetchEvent(event.id);
       setEventDetail(detail);
 
-      const tokenId = extractClobTokenId(detail);
-      if (!tokenId) {
+      const marketId = extractMarketId(detail);
+      if (!marketId) {
         setError("This event has no price data available.");
         setLoadingChart(false);
         return;
       }
 
-      const history = await fetchPriceHistory(tokenId);
+      const history = await fetchPriceHistory(marketId);
 
       if (!history || history.length === 0) {
         setError("No price history found for this event.");

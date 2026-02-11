@@ -4,16 +4,18 @@ import type {
   EventSummary,
 } from "./types";
 
-const GAMMA_API = "https://gamma-api.polymarket.com";
+// All requests go through our Next.js API route to avoid CORS
+const PROXY = "/api/polymarket";
 
 /**
- * Fetch active events from Polymarket Gamma API.
+ * Fetch active events from Polymarket Gamma API (via proxy).
  */
 export async function fetchEvents(
   limit = 20,
   active = true,
 ): Promise<PolymarketEvent[]> {
   const params = new URLSearchParams({
+    path: "/events",
     limit: String(limit),
     active: String(active),
     closed: "false",
@@ -21,8 +23,8 @@ export async function fetchEvents(
     ascending: "false",
   });
 
-  const res = await fetch(`${GAMMA_API}/events?${params}`);
-  if (!res.ok) throw new Error(`Gamma API error: ${res.status}`);
+  const res = await fetch(`${PROXY}?${params}`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }
 
@@ -30,8 +32,9 @@ export async function fetchEvents(
  * Fetch a single event by ID.
  */
 export async function fetchEvent(id: string): Promise<PolymarketEvent> {
-  const res = await fetch(`${GAMMA_API}/events/${id}`);
-  if (!res.ok) throw new Error(`Gamma API error: ${res.status}`);
+  const params = new URLSearchParams({ path: `/events/${id}` });
+  const res = await fetch(`${PROXY}?${params}`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }
 
@@ -40,18 +43,17 @@ export async function fetchEvent(id: string): Promise<PolymarketEvent> {
  */
 export async function fetchPriceHistory(
   clobTokenId: string,
-  fidelity = 60, // minutes between data points
+  fidelity = 60,
 ): Promise<PricePoint[]> {
   const params = new URLSearchParams({
+    path: "/prices/history",
     market: clobTokenId,
     interval: "max",
     fidelity: String(fidelity),
   });
 
-  const res = await fetch(
-    `${GAMMA_API}/prices/history?${params}`,
-  );
-  if (!res.ok) throw new Error(`Gamma API error: ${res.status}`);
+  const res = await fetch(`${PROXY}?${params}`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
 
   const data = await res.json();
   return (data.history ?? data) as PricePoint[];

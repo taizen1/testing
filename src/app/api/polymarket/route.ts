@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     const res = await fetch(upstreamUrl, {
       headers: { Accept: "application/json" },
-      next: { revalidate: 30 }, // cache for 30s on the server
+      cache: "no-store",
     });
 
     if (!res.ok) {

@@ -1,4 +1,82 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import Chart from "@/components/Chart";
+import EventSelector from "@/components/EventSelector";
+import BrierCard from "@/components/BrierCard";
+import MarketInfo from "@/components/MarketInfo";
+import NewsFeed from "@/components/NewsFeed";
+import {
+  fetchEvents,
+  fetchEvent,
+  fetchPriceHistory,
+  toEventSummaries,
+  extractClobTokenId,
+} from "@/lib/polymarket";
+import { generateExpertLine, computeBrierScore } from "@/lib/superforecaster";
+import type {
+  EventSummary,
+  PolymarketEvent,
+  ChartDataPoint,
+  BrierResult,
+} from "@/lib/types";
+
 export default function Home() {
+  const [events, setEvents] = useState<EventSummary[]>([]);
+  const [selected, setSelected] = useState<EventSummary | null>(null);
+  const [eventDetail, setEventDetail] = useState<PolymarketEvent | null>(null);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+  const [brierResult, setBrierResult] = useState<BrierResult | null>(null);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [loadingChart, setLoadingChart] = useState(false);
+
+  // Fetch events on mount
+  useEffect(() => {
+    fetchEvents(30)
+      .then((data) => setEvents(toEventSummaries(data)))
+      .catch((err) => console.error("Failed to fetch events:", err))
+      .finally(() => setLoadingEvents(false));
+  }, []);
+
+  // When user selects an event, fetch its detail + price history
+  const handleSelectEvent = useCallback(async (event: EventSummary) => {
+    setSelected(event);
+    setLoadingChart(true);
+    setChartData([]);
+    setBrierResult(null);
+
+    try {
+      const detail = await fetchEvent(event.id);
+      setEventDetail(detail);
+
+      const tokenId = extractClobTokenId(detail);
+      if (!tokenId) {
+        console.error("No CLOB token ID found");
+        setLoadingChart(false);
+        return;
+      }
+
+      const history = await fetchPriceHistory(tokenId);
+
+      const startTime = detail.startDate
+        ? Math.floor(new Date(detail.startDate).getTime() / 1000)
+        : history[0]?.t ?? 0;
+      const endTime = detail.endDate
+        ? Math.floor(new Date(detail.endDate).getTime() / 1000)
+        : Math.floor(Date.now() / 1000);
+
+      const data = generateExpertLine(history, startTime, endTime);
+      setChartData(data);
+
+      const brier = computeBrierScore(data);
+      setBrierResult(brier);
+    } catch (err) {
+      console.error("Failed to load event data:", err);
+    } finally {
+      setLoadingChart(false);
+    }
+  }, []);
+
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Page header */}
@@ -15,9 +93,9 @@ export default function Home() {
         {/* Chart area (2/3 width) */}
         <div className="lg:col-span-2">
           <div className="glass-card p-6">
-            {/* Event selector placeholder */}
-            <div className="mb-6 flex items-center justify-between">
-              <div>
+            {/* Event selector */}
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div className="shrink-0">
                 <h2 className="text-sm font-medium text-white/80">
                   Event Tracker
                 </h2>
@@ -25,39 +103,20 @@ export default function Home() {
                   Select a Polymarket event to begin analysis
                 </p>
               </div>
-              <div className="glass-card-inset px-3 py-1.5 text-xs text-white/40">
-                Select event...
+              <div className="w-64">
+                <EventSelector
+                  events={events}
+                  selected={selected}
+                  onSelect={handleSelectEvent}
+                  loading={loadingEvents}
+                />
               </div>
             </div>
 
-            {/* Chart placeholder */}
-            <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-white/8 bg-white/[0.01]">
-              <div className="text-center">
-                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-sage-400/10 border border-sage-400/15">
-                  <svg
-                    className="h-5 w-5 text-sage-400/60"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
-                    />
-                  </svg>
-                </div>
-                <p className="text-xs text-white/30">
-                  Market vs. Superforecaster chart
-                </p>
-                <p className="text-[10px] text-white/20 mt-1">
-                  Recharts + Framer Motion
-                </p>
-              </div>
-            </div>
+            {/* Chart */}
+            <Chart data={chartData} loading={loadingChart} />
 
-            {/* Legend placeholders */}
+            {/* Legend */}
             <div className="mt-4 flex items-center gap-6 text-xs">
               <div className="flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-sage-400" />
@@ -67,56 +126,14 @@ export default function Home() {
                 <div className="h-2 w-2 rounded-full bg-periwinkle-400" />
                 <span className="text-white/50">Superforecaster</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-4 rounded-full bg-white/10" />
-                <span className="text-white/35">Confidence interval</span>
-              </div>
             </div>
           </div>
         </div>
 
         {/* Sidebar — stats + info (1/3 width) */}
         <div className="space-y-6">
-          {/* Brier score card */}
-          <div className="glass-card p-5">
-            <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">
-              Brier Score
-            </h3>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-semibold text-sage-400">
-                --
-              </span>
-              <span className="text-xs text-white/30">/ 1.00</span>
-            </div>
-            <p className="mt-2 text-[11px] text-white/25">
-              Lower is better. Measures calibration accuracy.
-            </p>
-          </div>
-
-          {/* Market info card */}
-          <div className="glass-card p-5">
-            <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">
-              Market Info
-            </h3>
-            <div className="mt-3 space-y-3">
-              <div className="flex justify-between text-xs">
-                <span className="text-white/35">Volume</span>
-                <span className="text-white/60">--</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-white/35">Liquidity</span>
-                <span className="text-white/60">--</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-white/35">End Date</span>
-                <span className="text-white/60">--</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-white/35">Current Price</span>
-                <span className="text-white/60">--</span>
-              </div>
-            </div>
-          </div>
+          <BrierCard result={brierResult} />
+          <MarketInfo event={eventDetail} />
 
           {/* Expert methodology card */}
           <div className="glass-card p-5">
@@ -124,9 +141,9 @@ export default function Home() {
               Expert Method
             </h3>
             <p className="mt-2 text-[11px] text-white/25 leading-relaxed">
-              Superforecaster line combines Inside View (base rates,
-              historical data) with Outside View (reference class) using Brier-optimal
-              weighting.
+              Time-Decay Smoothing with Extremization. Exponential smoothing
+              (β=0.12) filters market noise, then time-varying extremization
+              pushes predictions toward 0/1 as the event approaches resolution.
             </p>
           </div>
         </div>
@@ -134,21 +151,7 @@ export default function Home() {
 
       {/* News feed section (below chart) */}
       <section>
-        <div className="glass-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-medium text-white/80">
-              News Impact Feed
-            </h2>
-            <span className="text-[10px] text-white/25 uppercase tracking-wider">
-              Coming soon
-            </span>
-          </div>
-          <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-white/8 bg-white/[0.01]">
-            <p className="text-xs text-white/20">
-              Real-time news events that may shift expert predictions
-            </p>
-          </div>
-        </div>
+        <NewsFeed items={[]} />
       </section>
     </div>
   );

@@ -153,43 +153,9 @@ The weighting shifts over time: early in a market the Outside View dominates
 (reference class); as the end date approaches and more information arrives, the
 Inside View gains weight.
 
-### Expert Line Generation — Algorithm Choice
+### Expert Line Generation — Chosen Algorithm
 
-> **PENDING USER DECISION** — three candidate algorithms proposed below.
-> The chosen algorithm will live in `src/lib/superforecaster.ts`.
-
-#### Option A: Simple Extremization
-
-Push market probabilities toward 0 or 1 to correct for known under-confidence:
-
-```
-p_expert = p_market ^ α / (p_market ^ α + (1 - p_market) ^ α)
-```
-
-Where `α > 1` (typically 1.5–2.5). Higher α = more extreme correction.
-
-- **Pro:** Dead simple, one tunable parameter, well-studied.
-- **Con:** Uni-directional — always pushes away from 0.5.
-
-#### Option B: Base-Rate Anchoring with Bayesian Update
-
-Start from a historical base rate for the event category, then update with
-the market signal using a dampened Bayesian update:
-
-```
-prior       = base_rate(event_category)
-likelihood  = p_market
-p_expert    = (prior * likelihood) / ((prior * likelihood) + ((1 - prior) * (1 - likelihood)))
-p_expert    = λ * p_expert + (1 - λ) * prior     // dampening
-```
-
-Where `λ` (lambda) controls how much we trust the market vs. the base rate.
-Lambda increases as the market approaches its end date.
-
-- **Pro:** Incorporates real outside-view data; naturally calibrated.
-- **Con:** Requires a base-rate dataset per event category.
-
-#### Option C: Time-Decay Smoothing with Extremization
+> **DECISION: Option C — Time-Decay Smoothing with Extremization**
 
 Apply exponential smoothing to remove noise, then extremize the smoothed signal:
 
@@ -198,13 +164,18 @@ p_smooth(t)  = β * p_market(t) + (1 - β) * p_smooth(t-1)
 p_expert(t)  = extremize(p_smooth(t), α(t))
 ```
 
-Where:
+Where `extremize(p, α) = p^α / (p^α + (1-p)^α)` and:
+
 - `β` = smoothing factor (0.05–0.2), controls noise filtering.
 - `α(t)` = time-varying extremization that increases as end date nears
   (`α = 1 + k * (days_elapsed / total_days)`).
+- Default tuning: `β = 0.12`, `k = 1.5` (so α ranges from ~1.0 to ~2.5).
 
-- **Pro:** Handles both noise and under-confidence; visually compelling line.
-- **Con:** Two tunable parameters; lag on genuine information shocks.
+**Why this algorithm:** Handles both recency-bias noise (via smoothing) and
+favourite-longshot under-confidence (via extremization). The time-varying α
+naturally captures the intuition that predictions should become more decisive
+as resolution approaches. Produces a visually compelling, smooth expert line
+that diverges meaningfully from raw market noise.
 
 ---
 
@@ -212,9 +183,8 @@ Where:
 
 - [x] Phase 1: Foundation (directory structure, configs, layout shell)
 - [x] Phase 1.5: Muted Luxury palette applied
-- [ ] Phase 2: CLAUDE.md + algorithm decision ← **YOU ARE HERE**
-- [ ] Phase 3: Chart component (Recharts + Framer Motion)
+- [x] Phase 2: CLAUDE.md + algorithm decision (Option C chosen)
+- [ ] Phase 3: Chart component + core lib files ← **YOU ARE HERE**
 - [ ] Phase 4: Polymarket API integration (`src/lib/polymarket.ts`)
-- [ ] Phase 5: Superforecaster algorithm (`src/lib/superforecaster.ts`)
-- [ ] Phase 6: News Impact feed
-- [ ] Phase 7: Polish, responsive design, edge cases
+- [ ] Phase 5: News Impact feed
+- [ ] Phase 6: Polish, responsive design, edge cases
